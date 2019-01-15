@@ -88,7 +88,6 @@ def calc_interferogram(image_dict, pol_vec):
 
     lia = get_image_array(lia_file)
     fe = get_image_array(fe_file)
-    topo = get_image_array(topo_file)
 
     ifg = np.full_like(hh_mst, np.nan, dtype=np.complex)
     s1 = np.full_like(hh_mst, np.nan, dtype=np.complex)
@@ -122,9 +121,9 @@ def calc_interferogram(image_dict, pol_vec):
     write_file(ifg, hh_file, 'Ifg_Polinsar')
     write_file(s1, hh_file, 'S1')
     write_file(s2, hh_file, 'S2')
-    write_file(kz, hh_file, 'Wavenumber')
+    write_file(kz, hh_file, 'Wavenumber', is_complex=False)
 
-    return s1, s2, ifg, kz, topo
+    return s1, s2, ifg, kz
 
 
 def calc_coherence_mat(s1, s2, ifg, img_file=None, num_looks=10):
@@ -155,23 +154,66 @@ def mysinc(x, c):
     return np.sinc(x) - c
 
 
+def get_ensemble_window(image_arr, index, wsize):
+    startx = index[0] - wsize[0]
+    starty = index[1] - wsize[1]
+    if startx < 0:
+        startx = 0
+    if starty < 0:
+        starty = 0
+    endx = index[0] + wsize[0] + 1
+    endy = index[1] + wsize[1] + 1
+    limits = image_arr.shape[0] + 1, image_arr.shape[1] + 1
+    if endx > limits[0] + 1:
+        endx = limits[0] + 1
+    if endy > limits[1] + 1:
+        endy = limits[1] + 1
+    return image_arr[startx: endx, starty: endy]
+
+
+def get_ensemble_avg(image_arr, wsize, verbose=True):
+    print('PERFORMING ENSEMBLE AVERAGING...')
+    emat = np.full_like(image_arr, np.nan, dtype=np.float32)
+    for index, value in np.ndenumerate(image_arr):
+        if not np.isnan(value):
+            ensemble_window = get_ensemble_window(image_arr, index, wsize)
+            emat[index] = np.nanmean(ensemble_window)
+            if verbose:
+                print(index, emat[index])
+    np.save('SD_Emat', emat)
+    return emat
+
+
 def calc_snow_depth(tmat, kz, topo, img_file, eps=0.4):
-    abs_tmat = np.abs(tmat)
-    sinc_inv = scp.newton(mysinc, args=(abs_tmat, ), x0=1)
-    snow_depth = (np.arctan(tmat.imag / tmat.real) + 2 * eps * sinc_inv - topo) / kz
+    snow_depth = np.full_like(tmat, np.nan, dtype=np.float32)
+    for itr in np.ndenumerate(snow_depth):
+        idx = itr[0]
+        tval = tmat[idx]
+        kz_val = kz[idx]
+        topo_val = np.fmod(topo[idx], 2 * np.pi)
+        nan_check = np.isnan(np.array([[tval, kz_val, topo_val]]))
+        if len(nan_check[nan_check]) == 0:
+            sinc_inv = scp.newton(mysinc, args=(np.abs(tval), ), x0=1)
+            snow_depth[idx] = np.abs((np.arctan(tval.imag / tval.real) - topo_val + 2 * eps * sinc_inv) / kz_val)
+            print('At ', idx, 'Snow depth= ', snow_depth[idx])
     np.save('Snow_Depth', snow_depth)
     write_file(snow_depth, img_file, 'Snow_Depth_Polinsar', is_complex=False)
     return snow_depth
 
 
-# image_dict = read_images('../../Documents/Clipped_Tifs')
+image_dict = read_images('../../Documents/Clipped_Tifs')
 # print('Images loaded...\n')
 # pol_vec_HV = calc_pol_vec_dict()['HV']
 # s1, s2, ifg, kz, topo = calc_interferogram(image_dict, pol_vec_HV)
-print('Starting coherence matrix calculation ...')
-s1 = np.load('S1.npy')
-s2=np.load('S2.npy')
-ifg = np.load('Ifg.npy')
-tmat = calc_coherence_mat(s1, s2, ifg)#, img_file=image_dict['HV'])
+# print('Starting coherence matrix calculation ...')
+# s1 = np.load('S1.npy')
+# s2=np.load('S2.npy')
+# ifg = np.load('Ifg.npy')
+# tmat = calc_coherence_mat(s1, s2, ifg)#, img_file=image_dict['HV'])
+# tmat = np.load('Coherence.npy')
+# kz = np.load('kz.npy')
+# topo = get_image_array(image_dict['TOPO'])
 # print('Calculating snow depth')
 # snow_depth = calc_snow_depth(tmat, kz, topo, img_file=image_dict['HV'])
+#snow_depth = np.load('Snow_Depth.npy')
+#avg_sd = get_ensemble_avg(snow_depth, (5, 5))
