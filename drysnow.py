@@ -76,9 +76,9 @@ def calc_interferogram(image_dict, pol_vec):
     fe = get_image_array(fe_file)
     topo = get_image_array(topo_file)
 
-    ifg = np.full_like(hh_mst, np.nan, dtype=np.float32)
-    s1 = np.full_like(hh_mst, np.nan, dtype=np.float32)
-    s2 = np.full_like(hh_mst, np.nan, dtype=np.float32)
+    ifg = np.full_like(hh_mst, np.nan, dtype=np.complex)
+    s1 = np.full_like(hh_mst, np.nan, dtype=np.complex)
+    s2 = np.full_like(hh_mst, np.nan, dtype=np.complex)
 
     for itr in np.ndenumerate(ifg):
         idx = itr[0]
@@ -106,8 +106,8 @@ def calc_interferogram(image_dict, pol_vec):
 
 def write_tif(arr, src_file, outfile='test', no_data_value=NO_DATA_VALUE):
     arr[np.isnan(arr.real)] = NO_DATA_VALUE
-    driver = gdal.GetDriverByName("GTiff")
-    out = driver.Create(outfile + '.tif', arr.shape[1], arr.shape[0], 1, gdal.GDT_Float32)
+    driver = gdal.GetDriverByName("ENVI")
+    out = driver.Create(outfile, arr.shape[1], arr.shape[0], 1, gdal.GDT_CFloat32)
     out.SetProjection(src_file.GetProjection())
     out.SetGeoTransform(src_file.GetGeoTransform())
     out.GetRasterBand(1).SetNoDataValue(no_data_value)
@@ -116,7 +116,7 @@ def write_tif(arr, src_file, outfile='test', no_data_value=NO_DATA_VALUE):
 
 
 def calc_coherence_mat(s1, s2, ifg, img_file, num_looks=10):
-    tmat = np.full(ifg, np.nan, dtype=np.float32)
+    tmat = np.full(ifg, np.nan, dtype=np.complex)
     max_x = ifg.shape[0]
     for itr in np.ndenumerate(tmat):
         idx = itr[0]
