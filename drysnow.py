@@ -91,23 +91,33 @@ def calc_interferogram(image_dict, pol_vec):
 
         k1 = (2 ** -0.5) * np.array([[hh_1 + vv_1, hh_1 - vv_1, 2 * hv_1]])
         k2 = (2 ** -0.5) * np.array([[hh_2 ** 2 + vv_2 ** 2, hh_2 ** 2 - vv_2 ** 2, 2 * hv_2 ** 2]])
-        s1[idx] = np.matmul(pol_vec_HV, k1.T)[0][0]
-        s2[idx] = np.matmul(pol_vec_HV, k2.T)[0][0]
+        s1[idx] = np.matmul(pol_vec, k1.T)[0][0]
+        s2[idx] = np.matmul(pol_vec, k2.T)[0][0]
         ifg[idx] = s1[idx] * np.conj(s2[idx]) * np.exp(fe[idx] * -1j)
         print('At ', idx, ' IFG = ', ifg[idx])
 
     kz = 4 * np.pi * DEL_THETA / (WAVELENGTH * np.sin(lia))
 
-    write_tif(ifg, hh_file, 'Ifg_Polinsar')
-    write_tif(kz, hh_file, 'Wavenumber')
+    np.save('S1', s1)
+    np.save('S2', s2)
+    np.save('Ifg', ifg)
+    np.save('kz', kz)
+
+    write_file(ifg, hh_file, 'Ifg_Polinsar')
+    write_file(s1, hh_file, 'S1')
+    write_file(s2, hh_file, 'S2')
+    write_file(kz, hh_file, 'Wavenumber')
 
     return s1, s2, ifg, kz, topo
 
 
-def write_tif(arr, src_file, outfile='test', no_data_value=NO_DATA_VALUE):
+def write_file(arr, src_file, outfile='test', no_data_value=NO_DATA_VALUE, is_complex=True):
     arr[np.isnan(arr.real)] = NO_DATA_VALUE
     driver = gdal.GetDriverByName("ENVI")
-    out = driver.Create(outfile, arr.shape[1], arr.shape[0], 1, gdal.GDT_CFloat32)
+    if is_complex:
+        out = driver.Create(outfile, arr.shape[1], arr.shape[0], 1, gdal.GDT_CFloat32)
+    else:
+        out = driver.Create(outfile, arr.shape[1], arr.shape[0], 1, gdal.GDT_Float32)
     out.SetProjection(src_file.GetProjection())
     out.SetGeoTransform(src_file.GetGeoTransform())
     out.GetRasterBand(1).SetNoDataValue(no_data_value)
@@ -116,7 +126,7 @@ def write_tif(arr, src_file, outfile='test', no_data_value=NO_DATA_VALUE):
 
 
 def calc_coherence_mat(s1, s2, ifg, img_file, num_looks=10):
-    tmat = np.full(ifg, np.nan, dtype=np.complex)
+    tmat = np.full_like(ifg, np.nan, dtype=np.complex)
     max_x = ifg.shape[0]
     for itr in np.ndenumerate(tmat):
         idx = itr[0]
@@ -129,8 +139,9 @@ def calc_coherence_mat(s1, s2, ifg, img_file, num_looks=10):
         num = np.sum(ifg[start_x: end_x])
         denom = np.sqrt(np.sum(sub_s1 * np.conj(sub_s1))) * np.sqrt(np.sum(sub_s2 * np.conj(sub_s2)))
         tmat[idx] = num / denom
-        print('Coherence at ', idx, '= ', tmat[idx])
-    write_tif(tmat, img_file, 'Coherence')
+        print('Coherence at ', idx, '= ', np.abs(tmat[idx]))
+    np.save('Coherence', tmat)
+    write_file(tmat, img_file, 'Coherence')
     return tmat
 
 
@@ -138,10 +149,12 @@ def mysinc(x, c):
     return np.sinc(x) - c
 
 
-def calc_snow_depth(tmat, kz, topo, eps=0.4):
+def calc_snow_depth(tmat, kz, topo, img_file, eps=0.4):
     abs_tmat = np.abs(tmat)
     sinc_inv = scp.newton(mysinc, args=(abs_tmat, ), x0=1)
     snow_depth = (np.arctan(tmat.imag / tmat.real) + 2 * eps * sinc_inv - topo) / kz
+    np.save('Snow_Depth', snow_depth)
+    write_file(snow_depth, img_file, 'Snow_Depth_Polinsar', is_complex=False)
     return snow_depth
 
 
@@ -152,4 +165,4 @@ s1, s2, ifg, kz, topo = calc_interferogram(image_dict, pol_vec_HV)
 print('Starting coherence matrix calculation ...')
 tmat = calc_coherence_mat(s1, s2, ifg, img_file=image_dict['HV'])
 print('Calculating snow depth')
-snow_depth = calc_snow_depth(tmat, kz, topo)
+snow_depth = calc_snow_depth(tmat, kz, topo, img_file=image_dict['HV'])
