@@ -57,6 +57,20 @@ def calc_pol_vec_dict():
     return pol_vec_dict
 
 
+def write_file(arr, src_file, outfile='test', no_data_value=NO_DATA_VALUE, is_complex=True):
+    arr[np.isnan(arr.real)] = NO_DATA_VALUE
+    driver = gdal.GetDriverByName("ENVI")
+    if is_complex:
+        out = driver.Create(outfile, arr.shape[1], arr.shape[0], 1, gdal.GDT_CFloat32)
+    else:
+        out = driver.Create(outfile, arr.shape[1], arr.shape[0], 1, gdal.GDT_Float32)
+    out.SetProjection(src_file.GetProjection())
+    out.SetGeoTransform(src_file.GetGeoTransform())
+    out.GetRasterBand(1).SetNoDataValue(no_data_value)
+    out.GetRasterBand(1).WriteArray(arr)
+    out.FlushCache()
+
+
 def calc_interferogram(image_dict, pol_vec):
     hh_file = image_dict['HH']
     hv_file = image_dict['HV']
@@ -89,12 +103,14 @@ def calc_interferogram(image_dict, pol_vec):
         hv_1 = hv_mst[idx]
         hv_2 = hv_slv[idx]
 
-        k1 = (2 ** -0.5) * np.array([[hh_1 + vv_1, hh_1 - vv_1, 2 * hv_1]])
-        k2 = (2 ** -0.5) * np.array([[hh_2 ** 2 + vv_2 ** 2, hh_2 ** 2 - vv_2 ** 2, 2 * hv_2 ** 2]])
-        s1[idx] = np.matmul(pol_vec, k1.T)[0][0]
-        s2[idx] = np.matmul(pol_vec, k2.T)[0][0]
-        ifg[idx] = s1[idx] * np.conj(s2[idx]) * np.exp(fe[idx] * -1j)
-        print('At ', idx, ' IFG = ', ifg[idx])
+        nan_check = np.isnan(np.array([[hh_1, vv_1, hh_2, vv_2, hv_1, hv_2]]))
+        if len(nan_check[nan_check]) == 0:
+            k1 = (2 ** -0.5) * np.array([[hh_1 + vv_1, hh_1 - vv_1, 2 * hv_1]])
+            k2 = (2 ** -0.5) * np.array([[hh_2 ** 2 + vv_2 ** 2, hh_2 ** 2 - vv_2 ** 2, 2 * hv_2 ** 2]])
+            s1[idx] = np.matmul(pol_vec, k1.T)[0][0]
+            s2[idx] = np.matmul(pol_vec, k2.T)[0][0]
+            ifg[idx] = s1[idx] * np.conj(s2[idx]) * np.exp(fe[idx] * -1j)
+            print('At ', idx, ' IFG = ', ifg[idx])
 
     kz = 4 * np.pi * DEL_THETA / (WAVELENGTH * np.sin(lia))
 
@@ -111,37 +127,27 @@ def calc_interferogram(image_dict, pol_vec):
     return s1, s2, ifg, kz, topo
 
 
-def write_file(arr, src_file, outfile='test', no_data_value=NO_DATA_VALUE, is_complex=True):
-    arr[np.isnan(arr.real)] = NO_DATA_VALUE
-    driver = gdal.GetDriverByName("ENVI")
-    if is_complex:
-        out = driver.Create(outfile, arr.shape[1], arr.shape[0], 1, gdal.GDT_CFloat32)
-    else:
-        out = driver.Create(outfile, arr.shape[1], arr.shape[0], 1, gdal.GDT_Float32)
-    out.SetProjection(src_file.GetProjection())
-    out.SetGeoTransform(src_file.GetGeoTransform())
-    out.GetRasterBand(1).SetNoDataValue(no_data_value)
-    out.GetRasterBand(1).WriteArray(arr)
-    out.FlushCache()
-
-
-def calc_coherence_mat(s1, s2, ifg, img_file, num_looks=10):
+def calc_coherence_mat(s1, s2, ifg, img_file=None, num_looks=10):
     tmat = np.full_like(ifg, np.nan, dtype=np.complex)
-    max_x = ifg.shape[0]
+    max_y = ifg.shape[1]
     for itr in np.ndenumerate(tmat):
         idx = itr[0]
         start_x = idx[0]
-        end_x = start_x + num_looks
-        if end_x > max_x:
-            end_x = max_x
-        sub_s1 = s1[start_x: end_x]
-        sub_s2 = s2[start_x: end_x]
-        num = np.sum(ifg[start_x: end_x])
-        denom = np.sqrt(np.sum(sub_s1 * np.conj(sub_s1))) * np.sqrt(np.sum(sub_s2 * np.conj(sub_s2)))
-        tmat[idx] = num / denom
-        print('Coherence at ', idx, '= ', np.abs(tmat[idx]))
+        start_y = idx[1]
+        end_y = start_y + num_looks
+        if end_y > max_y:
+            end_y = max_y
+        sub_s1 = s1[start_x][start_y: end_y]
+        sub_s2 = s2[start_x][start_y: end_y]
+        sub_ifg = ifg[start_x][start_y: end_y]
+        nan_check = np.isnan(np.array([[sub_s1[0], sub_s2[0], sub_ifg[0]]]))
+        if len(nan_check[nan_check]) == 0:
+            num = np.nansum(sub_ifg)
+            denom = np.sqrt(np.nansum(sub_s1 * np.conj(sub_s1))) * np.sqrt(np.nansum(sub_s2 * np.conj(sub_s2)))
+            tmat[idx] = num / denom
+            print('Coherence at ', idx, '= ', np.abs(tmat[idx]))
     np.save('Coherence', tmat)
-    write_file(tmat, img_file, 'Coherence')
+    #write_file(tmat, img_file, 'Coherence')
     return tmat
 
 
@@ -158,11 +164,14 @@ def calc_snow_depth(tmat, kz, topo, img_file, eps=0.4):
     return snow_depth
 
 
-image_dict = read_images('../THESIS/SnowSAR/Polinsar/Clipped_Tifs')
-print('Images loaded...\n')
-pol_vec_HV = calc_pol_vec_dict()['HV']
-s1, s2, ifg, kz, topo = calc_interferogram(image_dict, pol_vec_HV)
+# image_dict = read_images('../../Documents/Clipped_Tifs')
+# print('Images loaded...\n')
+# pol_vec_HV = calc_pol_vec_dict()['HV']
+# s1, s2, ifg, kz, topo = calc_interferogram(image_dict, pol_vec_HV)
 print('Starting coherence matrix calculation ...')
-tmat = calc_coherence_mat(s1, s2, ifg, img_file=image_dict['HV'])
-print('Calculating snow depth')
-snow_depth = calc_snow_depth(tmat, kz, topo, img_file=image_dict['HV'])
+s1 = np.load('S1.npy')
+s2=np.load('S2.npy')
+ifg = np.load('Ifg.npy')
+tmat = calc_coherence_mat(s1, s2, ifg)#, img_file=image_dict['HV'])
+# print('Calculating snow depth')
+# snow_depth = calc_snow_depth(tmat, kz, topo, img_file=image_dict['HV'])
