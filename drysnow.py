@@ -3,11 +3,12 @@ import numpy as np
 import glob
 import os
 import scipy.optimize as scp
+import affine
 
 MEAN_INC_TDX = (38.07691192626953 + 39.37236785888672) / 2.
 MEAN_INC_TSX = (38.104190826416016 + 39.37824630737305) / 2.
 DEL_THETA = np.abs(MEAN_INC_TDX - MEAN_INC_TSX)
-WAVELENGTH = 3.10880853
+WAVELENGTH = 0.0310880853
 NO_DATA_VALUE = -32768
 
 
@@ -58,75 +59,77 @@ def calc_pol_vec_dict():
 
 
 def write_file(arr, src_file, outfile='test', no_data_value=NO_DATA_VALUE, is_complex=True):
-    arr[np.isnan(arr.real)] = NO_DATA_VALUE
-    driver = gdal.GetDriverByName("ENVI")
+
+    driver = gdal.GetDriverByName("GTiff")
     if is_complex:
-        out = driver.Create(outfile, arr.shape[1], arr.shape[0], 1, gdal.GDT_CFloat32)
+        out = driver.Create(outfile + ".tif", arr.shape[1], arr.shape[0], 2, gdal.GDT_Float32)
     else:
-        out = driver.Create(outfile, arr.shape[1], arr.shape[0], 1, gdal.GDT_Float32)
+        out = driver.Create(outfile + ".tif", arr.shape[1], arr.shape[0], 1, gdal.GDT_Float32)
     out.SetProjection(src_file.GetProjection())
     out.SetGeoTransform(src_file.GetGeoTransform())
     out.GetRasterBand(1).SetNoDataValue(no_data_value)
-    out.GetRasterBand(1).WriteArray(arr)
+    if is_complex:
+        arr[np.isnan(arr)] = no_data_value + no_data_value * 1j
+        out.GetRasterBand(2).SetNoDataValue(no_data_value)
+        out.GetRasterBand(1).WriteArray(arr.real)
+        out.GetRasterBand(2).WriteArray(arr.imag)
+    else:
+        arr[np.isnan(arr)] = no_data_value
+        out.GetRasterBand(1).WriteArray(arr)
     out.FlushCache()
 
 
 def calc_interferogram(image_dict, pol_vec):
-    hh_file = image_dict['HH']
+    #hh_file = image_dict['HH']
     hv_file = image_dict['HV']
-    vh_file = image_dict['VH']
-    vv_file = image_dict['VV']
-    lia_file = image_dict['LIA']
+    #vh_file = image_dict['VH']
+    #vv_file = image_dict['VV']
     fe_file = image_dict['FE']
-    topo_file = image_dict['TOPO']
 
-    hh_mst, hh_slv = get_complex_image(hh_file)
+    #hh_mst, hh_slv = get_complex_image(hh_file)
     hv_mst, hv_slv = get_complex_image(hv_file)
-    vh_mst, vh_slv = get_complex_image(vh_file)
-    vv_mst, vv_slv = get_complex_image(vv_file)
-    hv_mst, hv_slv = (hv_mst + vh_mst) / 2., (hv_slv + vh_slv) / 2.
+    #vh_mst, vh_slv = get_complex_image(vh_file)
+    #vv_mst, vv_slv = get_complex_image(vv_file)
+    #hv_mst, hv_slv = (hv_mst + vh_mst) / 2., (hv_slv + vh_slv) / 2.
 
-    lia = get_image_array(lia_file)
     fe = get_image_array(fe_file)
 
-    ifg = np.full_like(hh_mst, np.nan, dtype=np.complex)
-    s1 = np.full_like(hh_mst, np.nan, dtype=np.complex)
-    s2 = np.full_like(hh_mst, np.nan, dtype=np.complex)
+    ifg = np.full_like(hv_mst, np.nan, dtype=np.complex)
+    s1 = np.full_like(hv_mst, np.nan, dtype=np.complex)
+    s2 = np.full_like(hv_mst, np.nan, dtype=np.complex)
 
     for itr in np.ndenumerate(ifg):
         idx = itr[0]
-        hh_1 = hh_mst[idx]
-        vv_1 = vv_mst[idx]
-        hh_2 = hh_slv[idx]
-        vv_2 = vv_slv[idx]
+        # hh_1 = hh_mst[idx]
+        # vv_1 = vv_mst[idx]
+        # hh_2 = hh_slv[idx]
+        # vv_2 = vv_slv[idx]
         hv_1 = hv_mst[idx]
         hv_2 = hv_slv[idx]
 
-        nan_check = np.isnan(np.array([[hh_1, vv_1, hh_2, vv_2, hv_1, hv_2]]))
+        nan_check = np.isnan(np.array([[hv_1, hv_2]]))
         if len(nan_check[nan_check]) == 0:
-            k1 = (2 ** -0.5) * np.array([[hh_1 + vv_1, hh_1 - vv_1, 2 * hv_1]])
-            k2 = (2 ** -0.5) * np.array([[hh_2 ** 2 + vv_2 ** 2, hh_2 ** 2 - vv_2 ** 2, 2 * hv_2 ** 2]])
-            s1[idx] = np.matmul(pol_vec, k1.T)[0][0]
-            s2[idx] = np.matmul(pol_vec, k2.T)[0][0]
+            #k1 = (2 ** -0.5) * np.array([[hh_1 + vv_1, hh_1 - vv_1, 2 * hv_1]])
+            #k2 = (2 ** -0.5) * np.array([[hh_2 + vv_2, hh_2 - vv_2, 2 * hv_2]])
+            #s1[idx] = np.matmul(pol_vec, k1.T)[0][0]
+            #s2[idx] = np.matmul(pol_vec, k2.T)[0][0]
+            s1[idx] = (2 ** 0.5) * hv_1
+            s2[idx] = (2 ** 0.5) * hv_2
             ifg[idx] = s1[idx] * np.conj(s2[idx]) * np.exp(fe[idx] * -1j)
             print('At ', idx, ' IFG = ', ifg[idx])
 
-    kz = 4 * np.pi * DEL_THETA / (WAVELENGTH * np.sin(lia))
+    np.save('Out/S1', s1)
+    np.save('Out/S2', s2)
+    np.save('Out/Ifg', ifg)
 
-    np.save('S1', s1)
-    np.save('S2', s2)
-    np.save('Ifg', ifg)
-    np.save('kz', kz)
+    write_file(ifg, hv_file, 'Out/Ifg_Polinsar')
+    # write_file(s1, hh_file, 'Out/S1')
+    # write_file(s2, hh_file, 'Out/S2')
 
-    write_file(ifg, hh_file, 'Ifg_Polinsar')
-    write_file(s1, hh_file, 'S1')
-    write_file(s2, hh_file, 'S2')
-    write_file(kz, hh_file, 'Wavenumber', is_complex=False)
-
-    return s1, s2, ifg, kz
+    return s1, s2, ifg
 
 
-def calc_coherence_mat(s1, s2, ifg, img_file=None, num_looks=10):
+def calc_coherence_mat(s1, s2, ifg, img_file, num_looks=10):
     tmat = np.full_like(ifg, np.nan, dtype=np.complex)
     max_y = ifg.shape[1]
     for itr in np.ndenumerate(tmat):
@@ -144,9 +147,11 @@ def calc_coherence_mat(s1, s2, ifg, img_file=None, num_looks=10):
             num = np.nansum(sub_ifg)
             denom = np.sqrt(np.nansum(sub_s1 * np.conj(sub_s1))) * np.sqrt(np.nansum(sub_s2 * np.conj(sub_s2)))
             tmat[idx] = num / denom
+            if np.abs(tmat[idx]) > 1:
+                tmat[idx] = 1 + 0j
             print('Coherence at ', idx, '= ', np.abs(tmat[idx]))
-    np.save('Coherence', tmat)
-    #write_file(tmat, img_file, 'Coherence')
+    np.save('Out/Coherence', tmat)
+    write_file(tmat, img_file, 'Out/Coherence')
     return tmat
 
 
@@ -171,7 +176,7 @@ def get_ensemble_window(image_arr, index, wsize):
     return image_arr[startx: endx, starty: endy]
 
 
-def get_ensemble_avg(image_arr, wsize, verbose=True):
+def get_ensemble_avg(image_arr, wsize, image_file, verbose=True):
     print('PERFORMING ENSEMBLE AVERAGING...')
     emat = np.full_like(image_arr, np.nan, dtype=np.float32)
     for index, value in np.ndenumerate(image_arr):
@@ -180,40 +185,73 @@ def get_ensemble_avg(image_arr, wsize, verbose=True):
             emat[index] = np.nanmean(ensemble_window)
             if verbose:
                 print(index, emat[index])
-    np.save('SD_Emat', emat)
+    np.save('Out/SD_Emat', emat)
+    write_file(emat, image_file, 'Avg_SD', is_complex=False)
     return emat
 
 
-def calc_snow_depth(tmat, kz, topo, img_file, eps=0.4):
+def calc_snow_depth_hybrid(tmat, image_dict, eps=0.4):
+    lia = get_image_array(image_dict['LIA'])
+    topo = get_image_array(image_dict['TOPO'])
     snow_depth = np.full_like(tmat, np.nan, dtype=np.float32)
     for itr in np.ndenumerate(snow_depth):
         idx = itr[0]
         tval = tmat[idx]
-        kz_val = kz[idx]
+        lia_val = np.deg2rad(lia[idx])
         topo_val = np.fmod(topo[idx], 2 * np.pi)
-        nan_check = np.isnan(np.array([[tval, kz_val, topo_val]]))
+        nan_check = np.isnan(np.array([[tval, lia_val, topo_val]]))
         if len(nan_check[nan_check]) == 0:
             sinc_inv = scp.newton(mysinc, args=(np.abs(tval), ), x0=1)
-            snow_depth[idx] = np.abs((np.arctan(tval.imag / tval.real) - topo_val + 2 * eps * sinc_inv) / kz_val)
+            kz_val = 4 * np.pi * np.deg2rad(DEL_THETA) / (WAVELENGTH * np.sin(lia_val))
+            snow_depth[idx] = np.abs((np.arctan(tval.imag / tval.real) + 2 * eps * sinc_inv) / kz_val)
+            if snow_depth[idx] > 10:
+                snow_depth[idx] = 0
             print('At ', idx, 'Snow depth= ', snow_depth[idx])
-    np.save('Snow_Depth', snow_depth)
-    write_file(snow_depth, img_file, 'Snow_Depth_Polinsar', is_complex=False)
+    np.save('Out/Snow_Depth', snow_depth)
+    write_file(snow_depth, image_dict['LIA'], 'Snow_Depth_Polinsar', is_complex=False)
     return snow_depth
 
 
-image_dict = read_images('../../Documents/Clipped_Tifs')
-# print('Images loaded...\n')
-# pol_vec_HV = calc_pol_vec_dict()['HV']
-# s1, s2, ifg, kz, topo = calc_interferogram(image_dict, pol_vec_HV)
-# print('Starting coherence matrix calculation ...')
-# s1 = np.load('S1.npy')
-# s2=np.load('S2.npy')
-# ifg = np.load('Ifg.npy')
-# tmat = calc_coherence_mat(s1, s2, ifg)#, img_file=image_dict['HV'])
-# tmat = np.load('Coherence.npy')
-# kz = np.load('kz.npy')
-# topo = get_image_array(image_dict['TOPO'])
+def retrieve_pixel_coords(geo_coord, data_source):
+    x, y = geo_coord[0], geo_coord[1]
+    forward_transform = affine.Affine.from_gdal(*data_source.GetGeoTransform())
+    reverse_transform = ~forward_transform
+    px, py = reverse_transform * (x, y)
+    px, py = int(px + 0.5), int(py + 0.5)
+    return px, py
+
+
+def get_image_stats(image_arr):
+    return np.min(image_arr), np.max(image_arr), np.mean(image_arr), np.std(image_arr)
+
+
+def validate_dry_snow(dsd_file, geocoords, nsize=(1, 1)):
+    dsd_file = gdal.Open(dsd_file)
+    px, py = retrieve_pixel_coords(geocoords, dsd_file)
+    fsd_arr = dsd_file.GetRasterBand(1).ReadAsArray()
+    fsd_dhundi = get_ensemble_window(fsd_arr, (py, px), nsize)
+    min_fsd, max_fsd, mean_fsd, sd_fsd = get_image_stats(fsd_dhundi[fsd_dhundi != NO_DATA_VALUE])
+    print(min_fsd, max_fsd, mean_fsd, sd_fsd)
+    #out = str(min_fsd) + ',' + str(max_fsd) + ',' + str(mean_fsd) + ',' + str(sd_fsd) + '\n'
+
+
+image_dict = read_images('../THESIS/SnowSAR/Polinsar/Clipped_Tifs')
+print('Images loaded...\n')
+#pol_vec_HV = calc_pol_vec_dict()['HV']
+#s1, s2, ifg = calc_interferogram(image_dict, pol_vec_HV)
+#s1 = np.load('Out/S1.npy')
+#s2 = np.load('Out/S2.npy')
+#ifg = np.load('Out/Ifg.npy')
+#print('Starting coherence matrix calculation ...')
+# s1 = np.load('Out/S1.npy')
+# s2=np.load('Out/S2.npy')
+# ifg = image_dict['IFG'].GetRasterBand(1).ReadAsArray() + image_dict['IFG'].GetRasterBand(2).ReadAsArray() * 1j
+# ifg[ifg == np.complex(NO_DATA_VALUE, NO_DATA_VALUE)] = np.nan
+#ifg = np.load('Ifg.npy')
+#tmat = calc_coherence_mat(s1, s2, ifg, img_file=image_dict['HV'])
+# tmat = np.load('Out/Coherence.npy')
 # print('Calculating snow depth')
-# snow_depth = calc_snow_depth(tmat, kz, topo, img_file=image_dict['HV'])
-#snow_depth = np.load('Snow_Depth.npy')
-#avg_sd = get_ensemble_avg(snow_depth, (5, 5))
+# snow_depth = calc_snow_depth_hybrid(tmat, image_dict)
+# snow_depth = np.load('Out/Snow_Depth.npy')
+# avg_sd = get_ensemble_avg(snow_depth, (10, 10), image_dict['TOPO'])
+validate_dry_snow('Avg_SD.tif', (700089.771, 3581794.5556))
