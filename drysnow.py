@@ -115,8 +115,8 @@ def calc_interferogram(image_dict, pol_vec):
             #s2[idx] = np.matmul(pol_vec, k2.T)[0][0]
             s1[idx] = (2 ** 0.5) * hv_1
             s2[idx] = (2 ** 0.5) * hv_2
-            ifg[idx] = s1[idx] * np.conj(s2[idx]) * np.exp(fe[idx] * -1j)
-            print('At ', idx, ' IFG = ', ifg[idx])
+            #ifg[idx] = s1[idx] * np.conj(s2[idx]) * np.exp(fe[idx] * -1j)
+            #print('At ', idx, ' IFG = ', ifg[idx])
 
     np.save('Out/S1', s1)
     np.save('Out/S2', s2)
@@ -192,20 +192,20 @@ def get_ensemble_avg(image_arr, wsize, image_file, verbose=True):
 
 def calc_snow_depth_hybrid(tmat, image_dict, eps=0.4):
     lia = get_image_array(image_dict['LIA'])
-    topo = get_image_array(image_dict['TOPO'])
     snow_depth = np.full_like(tmat, np.nan, dtype=np.float32)
     for itr in np.ndenumerate(snow_depth):
         idx = itr[0]
         tval = tmat[idx]
         lia_val = np.deg2rad(lia[idx])
-        topo_val = np.fmod(topo[idx], 2 * np.pi)
-        nan_check = np.isnan(np.array([[tval, lia_val, topo_val]]))
-        if len(nan_check[nan_check]) == 0:
+        if not np.isnan(lia_val):
+            if np.isnan(tval):
+                window = get_ensemble_window(tmat, idx, (2, 2))
+                tval = np.nanmean(window)
             sinc_inv = scp.newton(mysinc, args=(np.abs(tval), ), x0=1)
             kz_val = 4 * np.pi * np.deg2rad(DEL_THETA) / (WAVELENGTH * np.sin(lia_val))
             snow_depth[idx] = np.abs((np.arctan(tval.imag / tval.real) + 2 * eps * sinc_inv) / kz_val)
             if snow_depth[idx] > 10:
-                snow_depth[idx] = 0
+                snow_depth[idx] = 0.
             print('At ', idx, 'Snow depth= ', snow_depth[idx])
     np.save('Out/Snow_Depth', snow_depth)
     write_file(snow_depth, image_dict['LIA'], 'Snow_Depth_Polinsar', is_complex=False)
@@ -245,13 +245,13 @@ print('Images loaded...\n')
 #print('Starting coherence matrix calculation ...')
 # s1 = np.load('Out/S1.npy')
 # s2=np.load('Out/S2.npy')
-# ifg = image_dict['IFG'].GetRasterBand(1).ReadAsArray() + image_dict['IFG'].GetRasterBand(2).ReadAsArray() * 1j
-# ifg[ifg == np.complex(NO_DATA_VALUE, NO_DATA_VALUE)] = np.nan
+#ifg = image_dict['IFG'].GetRasterBand(1).ReadAsArray() + image_dict['IFG'].GetRasterBand(2).ReadAsArray() * 1j
+#ifg[ifg == np.complex(NO_DATA_VALUE, NO_DATA_VALUE)] = np.nan
 #ifg = np.load('Ifg.npy')
 #tmat = calc_coherence_mat(s1, s2, ifg, img_file=image_dict['HV'])
-# tmat = np.load('Out/Coherence.npy')
-# print('Calculating snow depth')
-# snow_depth = calc_snow_depth_hybrid(tmat, image_dict)
-# snow_depth = np.load('Out/Snow_Depth.npy')
-# avg_sd = get_ensemble_avg(snow_depth, (10, 10), image_dict['TOPO'])
+#tmat = np.load('Out/Coherence.npy')
+#print('Calculating snow depth')
+#snow_depth = calc_snow_depth_hybrid(tmat, image_dict)
+#snow_depth = np.load('Out/Snow_Depth.npy')
+#avg_sd = get_ensemble_avg(snow_depth, (10, 10), image_dict['TOPO'])
 validate_dry_snow('Avg_SD.tif', (700089.771, 3581794.5556))
