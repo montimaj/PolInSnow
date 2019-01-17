@@ -242,7 +242,7 @@ def nanfix_tmat(tmat, idx):
         i += 1
 
 
-def calc_snow_depth_hybrid(tmat, image_dict, eps=0.4):
+def calc_snow_depth_hybrid(tmat, image_dict, eps=0.4, threshold=10):
     lia = get_image_array(image_dict['LIA'])
     snow_depth = np.full_like(tmat, np.nan, dtype=np.float32)
     for itr in np.ndenumerate(snow_depth):
@@ -255,8 +255,8 @@ def calc_snow_depth_hybrid(tmat, image_dict, eps=0.4):
             sinc_inv = scp.newton(mysinc, args=(np.abs(tval), ), x0=1)
             kz_val = 4 * np.pi * np.deg2rad(DEL_THETA) / (WAVELENGTH * np.sin(lia_val))
             snow_depth[idx] = np.abs((np.arctan(tval.imag / tval.real) + 2 * eps * sinc_inv) / kz_val)
-            if snow_depth[idx] > 10:
-                snow_depth[idx] = 10.
+            if snow_depth[idx] > threshold:
+                snow_depth[idx] = 0.
             print('At ', idx, 'Snow depth= ', snow_depth[idx])
     np.save('Out/Snow_Depth', snow_depth)
     write_file(snow_depth.copy(), image_dict['LIA'], 'Snow_Depth_Polinsar', is_complex=False)
@@ -285,18 +285,19 @@ def validate_dry_snow(dsd_file, geocoords, nsize=(1, 1)):
     print(min_fsd, max_fsd, mean_fsd, sd_fsd)
 
 
-image_dict = read_images('../THESIS/SnowSAR/Polinsar/Clipped_Tifs')
+image_dict = read_images('../../Documents/Clipped_Tifs')
 print('Images loaded...\n')
 #pol_vec_HV = calc_pol_vec_dict()['HV']
 #s1, s2, ifg = get_interferogram(image_dict)
 print('Starting coherence matrix calculation ...')
-s1 = np.load('Out/S1.npy')
-s2=np.load('Out/S2.npy')
-ifg = np.load('Out/Ifg.npy')
-tmat = calc_coherence_mat(s1, s2, ifg, img_file=image_dict['HV'])
-#tmat = np.load('Out/Coherence_Ensemble.npy')
+# s1 = np.load('Out/S1.npy')
+# s2=np.load('Out/S2.npy')
+# ifg = np.load('Out/Ifg.npy')
+#tmat = calc_coherence_mat(s1, s2, ifg, img_file=image_dict['HV'])
+#tmat = calc_ensemble_cohmat(s1, s2, ifg, img_file=image_dict['HV'], wsize=(2, 2))
+tmat = np.load('Out/Coherence_Ensemble.npy')
 print('Calculating snow depth')
-snow_depth = calc_snow_depth_hybrid(tmat, image_dict)
+snow_depth = calc_snow_depth_hybrid(tmat, image_dict, threshold=5)
 #snow_depth = np.load('Out/Snow_Depth.npy')
-avg_sd = get_ensemble_avg(snow_depth, (10, 10), image_dict['TOPO'], outfile='Avg_SD')
+avg_sd = get_ensemble_avg(snow_depth, (5, 5), image_dict['TOPO'], outfile='Avg_SD')
 validate_dry_snow('Avg_SD.tif', (700089.771, 3581794.5556))
