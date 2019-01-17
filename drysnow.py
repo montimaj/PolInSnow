@@ -297,7 +297,8 @@ print('Starting coherence matrix calculation ...')
 #tmat = calc_ensemble_cohmat(s1, s2, ifg, img_file=image_dict['HV'], wsize=(2, 2))
 tmat = np.load('Out/Coherence_Ensemble.npy')
 print('Calculating snow depth')
-snow_depth = calc_snow_depth_hybrid(tmat, image_dict, threshold=5)
+snow_depth = calc_snow_depth_hybrid(tmat, image_dict, eps=0.1, threshold=6)
 #snow_depth = np.load('Out/Snow_Depth.npy')
 avg_sd = get_ensemble_avg(snow_depth, (5, 5), image_dict['TOPO'], outfile='Avg_SD')
-validate_dry_snow('Avg_SD.tif', (700089.771, 3581794.5556))
+validate_dry_snow('Avg_SD.tif', (700089.771, 3581794.5556)) # Dhundi
+#validate_dry_snow('Avg_SD.tif', (706137.95, 3577522.25)) # Kothi
