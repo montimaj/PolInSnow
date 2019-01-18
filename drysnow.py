@@ -289,16 +289,16 @@ image_dict = read_images('../THESIS/SnowSAR/Polinsar/Clipped_Tifs')
 print('Images loaded...\n')
 #pol_vec_HV = calc_pol_vec_dict()['HV']
 #s1, s2, ifg = get_interferogram(image_dict)
-print('Starting coherence matrix calculation ...')
+#print('Starting coherence matrix calculation ...')
 #s1 = np.load('Out/S1.npy')
 #s2=np.load('Out/S2.npy')
 #ifg = np.load('Out/Ifg.npy')
 #tmat = calc_coherence_mat(s1, s2, ifg, img_file=image_dict['HV'])
 #tmat = calc_ensemble_cohmat(s1, s2, ifg, img_file=image_dict['HV'], wsize=(2, 2))
-tmat = np.load('Out/Coherence_Ensemble.npy')
-print('Calculating snow depth')
-snow_depth = calc_snow_depth_hybrid(tmat, image_dict, threshold=7)
+#tmat = np.load('Out/Coherence_Ensemble.npy')
+#print('Calculating snow depth')
+#snow_depth = calc_snow_depth_hybrid(tmat, image_dict, threshold=7)
 #snow_depth = np.load('Out/Snow_Depth.npy')
-avg_sd = get_ensemble_avg(snow_depth, (32, 32), image_dict['TOPO'], outfile='Avg_SD')
-validate_dry_snow('Avg_SD.tif', (700089.771, 3581794.5556)) # Dhundi
+#avg_sd = get_ensemble_avg(snow_depth, (32, 32), image_dict['TOPO'], outfile='Avg_SD')
+validate_dry_snow('Results/Avg_SD.tif', (700089.771, 3581794.5556)) # Dhundi
 #validate_dry_snow('Avg_SD.tif', (706137.95, 3577522.25)) # Kothi
