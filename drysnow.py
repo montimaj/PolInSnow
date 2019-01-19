@@ -282,7 +282,6 @@ def retrieve_pixel_coords(geo_coord, data_source):
 def get_image_stats(image_arr):
     return np.min(image_arr), np.max(image_arr), np.mean(image_arr), np.std(image_arr)
 
-
 def validate_dry_snow(dsd_file, geocoords, nsize=(1, 1)):
     dsd_file = gdal.Open(dsd_file)
     px, py = retrieve_pixel_coords(geocoords, dsd_file)
@@ -295,15 +294,16 @@ def senstivity_analysis(image_dict):
     print('Calculating s1, s2 and ifg ...')
     s1, s2, ifg = get_interferogram(image_dict)
     print('Creating senstivity parameters ...')
-    # wrange = range(3, 66, 2)
-    # cwindows = [(i, j) for i, j in zip(wrange, wrange)]
+    wrange = range(3, 66, 2)
+    ewindows = [(i, j) for i, j in zip(wrange, wrange)]
     # ewindows = cwindows.copy()
     # epsilon = np.round(np.linspace(0, 1, 11), 1)
     cwindows = [(5, 5)]
-    ewindows = [(65, 65)]
+    #ewindows = [(65, 65)]
     epsilon = [0.4]
-    coherence_threshold = np.round(np.linspace(0.10, 0.90, 17), 2)
-    outfile = open('sensitivity.csv', 'a+')
+    #coherence_threshold = np.round(np.linspace(0.10, 0.90, 17), 2)
+    coherence_threshold = [0.65]
+    outfile = open('sensitivity_ew.csv', 'a+')
     outfile.write('CWindow Epsilon CThreshold SWindow Min(cm) Max(cm) Mean(cm) SD(cm)\n')
     img_file = image_dict['HV']
     print('Computation started...')
@@ -330,7 +330,7 @@ def senstivity_analysis(image_dict):
     outfile.close()
 
 
-image_dict = read_images('../THESIS/SnowSAR/Polinsar/Clipped_Tifs')
+image_dict = read_images('../THESIS/Thesis_Files/Polinsar/Clipped_Tifs')
 print('Images loaded...\n')
 senstivity_analysis(image_dict)
 #pol_vec_HV = calc_pol_vec_dict()['HV']
