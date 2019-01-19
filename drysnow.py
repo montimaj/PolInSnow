@@ -230,7 +230,7 @@ def get_ensemble_avg(image_arr, wsize, image_file, outfile, verbose=True):
                 print(index, emat[index])
     if verbose:
         np.save('Out/SD_Emat', emat)
-        write_file(emat.copy(), image_file, outfile, is_complex=False)
+    write_file(emat.copy(), image_file, outfile, is_complex=False)
     return emat
 
 
@@ -295,10 +295,13 @@ def senstivity_analysis(image_dict):
     print('Calculating s1, s2 and ifg ...')
     s1, s2, ifg = get_interferogram(image_dict)
     print('Creating senstivity parameters ...')
-    wrange = range(3, 66, 2)
-    cwindows = [(i, j) for i, j in zip(wrange, wrange)]
-    ewindows = cwindows.copy()
-    epsilon = np.round(np.linspace(0, 1, 11), 1)
+    # wrange = range(3, 66, 2)
+    # cwindows = [(i, j) for i, j in zip(wrange, wrange)]
+    # ewindows = cwindows.copy()
+    # epsilon = np.round(np.linspace(0, 1, 11), 1)
+    cwindows = [(5, 5)]
+    ewindows = [(65, 65)]
+    epsilon = [0.4]
     coherence_threshold = np.round(np.linspace(0.10, 0.90, 17), 2)
     outfile = open('sensitivity.csv', 'a+')
     outfile.write('CWindow Epsilon CThreshold SWindow Min(cm) Max(cm) Mean(cm) SD(cm)\n')
