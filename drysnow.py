@@ -176,7 +176,7 @@ def calc_coherence_mat(s1, s2, ifg, img_file, num_looks=10):
     return tmat
 
 
-def calc_ensemble_cohmat(s1, s2, ifg, img_file, wsize=(5, 5)):
+def calc_ensemble_cohmat(s1, s2, ifg, img_file, wsize=(5, 5), verbose=True):
     tmat = np.full_like(ifg, np.nan, dtype=np.complex)
     for itr in np.ndenumerate(tmat):
         idx = itr[0]
@@ -190,9 +190,11 @@ def calc_ensemble_cohmat(s1, s2, ifg, img_file, wsize=(5, 5)):
             tmat[idx] = num / denom
             if np.abs(tmat[idx]) > 1:
                 tmat[idx] = 1 + 0j
-            print('Coherence at ', idx, '= ', np.abs(tmat[idx]))
-    np.save('Out/Coherence_Ensemble', tmat)
-    write_file(tmat.copy(), img_file, 'Out/Coherence_Ensemble')
+            if verbose:
+                print('Coherence at ', idx, '= ', np.abs(tmat[idx]))
+    if verbose:
+        np.save('Out/Coherence_Ensemble', tmat)
+        write_file(tmat.copy(), img_file, 'Out/Coherence_Ensemble')
     return tmat
 
 
@@ -226,24 +228,26 @@ def get_ensemble_avg(image_arr, wsize, image_file, outfile, verbose=True):
             emat[index] = np.nanmean(ensemble_window)
             if verbose:
                 print(index, emat[index])
-    np.save('Out/SD_Emat', emat)
-    write_file(emat.copy(), image_file, outfile, is_complex=False)
+    if verbose:
+        np.save('Out/SD_Emat', emat)
+        write_file(emat.copy(), image_file, outfile, is_complex=False)
     return emat
 
 
-def nanfix_tmat(tmat, idx):
+def nanfix_tmat(tmat, idx, verbose=True):
     i = 1
     while True:
         window = get_ensemble_window(tmat, idx, (i, i))
         tval = np.nanmean(window)
-        print('\nTVAL nanfix', i, np.abs(tval))
+        if verbose:
+            print('\nTVAL nanfix', i, np.abs(tval))
         if not np.isnan(tval):
             return tval
         i += 1
 
 
-def calc_snow_depth_hybrid(tmat, image_dict, eps=0.4, coherence_threshold=0.5):
-    lia = get_image_array(image_dict['LIA'])
+def calc_snow_depth_hybrid(tmat, lia_file, eps=0.4, coherence_threshold=0.5, verbose=True):
+    lia = get_image_array(lia_file)
     snow_depth = np.full_like(tmat, np.nan, dtype=np.float32)
     for itr in np.ndenumerate(snow_depth):
         idx = itr[0]
@@ -251,18 +255,18 @@ def calc_snow_depth_hybrid(tmat, image_dict, eps=0.4, coherence_threshold=0.5):
         lia_val = np.deg2rad(lia[idx])
         if not np.isnan(lia_val):
             if np.isnan(tval):
-                tval = nanfix_tmat(tmat, idx)
+                tval = nanfix_tmat(tmat, idx, verbose)
             abs_tval = np.abs(tval)
             snow_depth[idx] = 0
             if abs_tval >= coherence_threshold:
                 sinc_inv = scp.newton(mysinc, args=(abs_tval, ), x0=1)
                 kz_val = 4 * np.pi * np.deg2rad(DEL_THETA) / (WAVELENGTH * np.sin(lia_val))
                 snow_depth[idx] = np.abs((np.arctan(tval.imag / tval.real) + 2 * eps * sinc_inv) / kz_val)
-                # if snow_depth[idx] > threshold:
-                #     snow_depth[idx] = 0
-                print('At ', idx, 'Snow depth= ', snow_depth[idx])
-    np.save('Out/Snow_Depth', snow_depth)
-    write_file(snow_depth.copy(), image_dict['LIA'], 'Snow_Depth_Polinsar', is_complex=False)
+                if verbose:
+                    print('At ', idx, 'Snow depth= ', snow_depth[idx])
+    if verbose:
+        np.save('Out/Snow_Depth', snow_depth)
+        write_file(snow_depth.copy(), lia_file, 'Snow_Depth_Polinsar', is_complex=False)
     return snow_depth
 
 
@@ -284,24 +288,47 @@ def validate_dry_snow(dsd_file, geocoords, nsize=(1, 1)):
     px, py = retrieve_pixel_coords(geocoords, dsd_file)
     fsd_arr = dsd_file.GetRasterBand(1).ReadAsArray()
     fsd_dhundi = get_ensemble_window(fsd_arr, (py, px), nsize)
-    min_fsd, max_fsd, mean_fsd, sd_fsd = get_image_stats(fsd_dhundi[fsd_dhundi != NO_DATA_VALUE])
-    print(min_fsd, max_fsd, mean_fsd, sd_fsd)
+    return get_image_stats(fsd_dhundi[fsd_dhundi != NO_DATA_VALUE])
+
+
+def senstivity_analysis(image_dict):
+    print('Calculating s1, s2 and ifg ...')
+    s1, s2, ifg = get_interferogram(image_dict)
+    print('Creating senstivity parameters ...')
+    wrange = range(3, 66, 2)
+    cwindows = [(i, j) for i, j in zip(wrange, wrange)]
+    ewindows = cwindows.copy()
+    epsilon = np.round(np.linspace(0, 1, 11), 1)
+    coherence_threshold = np.round(np.linspace(0.10, 0.90, 17), 2)
+    outfile = open('sensitivity.csv', 'a+')
+    outfile.write('CWindow Epsilon CThreshold SWindow Min(cm) Max(cm) Mean(cm) SD(cm)\n')
+    img_file = image_dict['HV']
+    print('Computation started...')
+    for wsize1 in cwindows:
+        ws1, ws2 = int(wsize1[0] / 2.), int(wsize1[1] / 2.)
+        wstr1 = '(' + str(wsize1[0]) + ',' + str(wsize1[1]) + ')'
+        print('Computing Coherence mat for ' + wstr1 + '...')
+        tmat = calc_ensemble_cohmat(s1, s2, ifg, img_file=img_file, wsize=(ws1, ws2), verbose=False)
+        for eps in epsilon:
+            for ct in coherence_threshold:
+                print('Computing Snow Depth ...')
+                snow_depth = calc_snow_depth_hybrid(tmat, lia_file=image_dict['LIA'], eps=eps, coherence_threshold=ct, verbose=False)
+                for wsize2 in ewindows:
+                    ws1, ws2 = int(wsize2[0] / 2.), int(wsize2[1] / 2.)
+                    print('Ensemble averaging snow depth ...')
+                    avg_sd = get_ensemble_avg(snow_depth, (ws1, ws2), image_file=img_file, outfile='Avg_SD', verbose=False)
+                    vr = validate_dry_snow('Avg_SD.tif', (700089.771, 3581794.5556))  # Dhundi
+                    vr_str = ' '.join([str(r) for r in vr])
+                    wstr2 = '(' + str(wsize2[0]) + ',' + str(wsize2[1]) + ')'
+                    final_str = wstr1 + ' ' + str(eps) + ' ' + str(ct) + ' ' + wstr2 + ' ' + vr_str + '\n'
+                    print(final_str)
+                    outfile.write(final_str)
+                    # vr = validate_dry_snow('Avg_SD.tif', (705849.1335, 3577999.4174)) # Kothi
+    outfile.close()
 
 
 image_dict = read_images('../THESIS/SnowSAR/Polinsar/Clipped_Tifs')
 print('Images loaded...\n')
+senstivity_analysis(image_dict)
 #pol_vec_HV = calc_pol_vec_dict()['HV']
-#s1, s2, ifg = get_interferogram(image_dict)
-#print('Starting coherence matrix calculation ...')
-#s1 = np.load('Out/S1.npy')
-#s2=np.load('Out/S2.npy')
-#ifg = np.load('Out/Ifg.npy')
-#tmat = calc_coherence_mat(s1, s2, ifg, img_file=image_dict['HV'])
-#tmat = calc_ensemble_cohmat(s1, s2, ifg, img_file=image_dict['HV'], wsize=(2, 2))
-tmat = np.load('Out/Coherence_Ensemble.npy')
-print('Calculating snow depth')
-snow_depth = calc_snow_depth_hybrid(tmat, image_dict, coherence_threshold=0.65)
-#snow_depth = np.load('Out/Snow_Depth.npy')
-avg_sd = get_ensemble_avg(snow_depth, (32, 32), image_dict['TOPO'], outfile='Avg_SD')
-validate_dry_snow('Avg_SD.tif', (700089.771, 3581794.5556)) # Dhundi
-#validate_dry_snow('Avg_SD.tif', (706137.95, 3577522.25)) # Kothi
+
