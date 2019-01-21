@@ -302,8 +302,8 @@ def senstivity_analysis(image_dict):
     #ewindows = [(65, 65)]
     epsilon = [0.4]
     #coherence_threshold = np.round(np.linspace(0.10, 0.90, 17), 2)
-    coherence_threshold = [0.65]
-    outfile = open('sensitivity_ew.csv', 'a+')
+    coherence_threshold = [0.4]
+    outfile = open('sensitivity_ew1.csv', 'a+')
     outfile.write('CWindow Epsilon CThreshold SWindow Min(cm) Max(cm) Mean(cm) SD(cm)\n')
     img_file = image_dict['HV']
     print('Computation started...')
