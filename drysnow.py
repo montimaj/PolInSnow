@@ -23,10 +23,10 @@ def read_images(path, imgformat='*.tif'):
     return images
 
 
-def get_complex_image(img_file, is_ifg=False):
+def get_complex_image(img_file, is_dual=False):
     mst = img_file.GetRasterBand(1).ReadAsArray() + img_file.GetRasterBand(2).ReadAsArray() * 1j
     mst[mst == np.complex(NO_DATA_VALUE, NO_DATA_VALUE)] = np.nan
-    if not is_ifg:
+    if not is_dual:
         slv = img_file.GetRasterBand(3).ReadAsArray() + img_file.GetRasterBand(4).ReadAsArray() * 1j
         slv[slv == np.complex(NO_DATA_VALUE, NO_DATA_VALUE)] = np.nan
         return mst, slv
@@ -134,7 +134,7 @@ def write_file(arr, src_file, outfile='test', no_data_value=NO_DATA_VALUE, is_co
 def get_interferogram(image_dict):
     hv_file = image_dict['HV']
     vh_file = image_dict['VH']
-    ifg = get_complex_image(image_dict['IFG'], is_ifg=True)
+    ifg = get_complex_image(image_dict['IFG'], is_dual=True)
 
     hv_mst, hv_slv = get_complex_image(hv_file)
     vh_mst, vh_slv = get_complex_image(vh_file)
@@ -176,7 +176,7 @@ def calc_coherence_mat(s1, s2, ifg, img_file, num_looks=10):
     return tmat
 
 
-def calc_ensemble_cohmat(s1, s2, ifg, img_file, wsize=(5, 5), verbose=True):
+def calc_ensemble_cohmat(s1, s2, ifg, img_file, wsize=(5, 5), verbose=True, wf=False):
     tmat = np.full_like(ifg, np.nan, dtype=np.complex)
     for itr in np.ndenumerate(tmat):
         idx = itr[0]
@@ -192,7 +192,7 @@ def calc_ensemble_cohmat(s1, s2, ifg, img_file, wsize=(5, 5), verbose=True):
                 tmat[idx] = 1 + 0j
             if verbose:
                 print('Coherence at ', idx, '= ', np.abs(tmat[idx]))
-    if verbose:
+    if wf:
         np.save('Out/Coherence_Ensemble', tmat)
         write_file(tmat.copy(), img_file, 'Out/Coherence_Ensemble')
     return tmat
@@ -219,8 +219,7 @@ def get_ensemble_window(image_arr, index, wsize):
     return image_arr[startx: endx, starty: endy]
 
 
-def get_ensemble_avg(image_arr, wsize, image_file, outfile, verbose=True):
-    print('PERFORMING ENSEMBLE AVERAGING...')
+def get_ensemble_avg(image_arr, wsize, image_file, outfile, verbose=True, wf=False):
     emat = np.full_like(image_arr, np.nan, dtype=np.float32)
     for index, value in np.ndenumerate(image_arr):
         if not np.isnan(value):
@@ -228,7 +227,7 @@ def get_ensemble_avg(image_arr, wsize, image_file, outfile, verbose=True):
             emat[index] = np.nanmean(ensemble_window)
             if verbose:
                 print(index, emat[index])
-    if verbose:
+    if wf:
         np.save('Out/SD_Emat', emat)
     write_file(emat.copy(), image_file, outfile, is_complex=False)
     return emat
@@ -246,7 +245,7 @@ def nanfix_tmat(tmat, idx, verbose=True):
         i += 1
 
 
-def calc_snow_depth_hybrid(tmat, lia_file, eps=0.4, coherence_threshold=0.5, verbose=True):
+def calc_snow_depth_hybrid(tmat, lia_file, eps=0.4, coherence_threshold=0.5, verbose=True, wf=False, singlepass=True):
     lia = get_image_array(lia_file)
     snow_depth = np.full_like(tmat, np.nan, dtype=np.float32)
     for itr in np.ndenumerate(snow_depth):
@@ -258,13 +257,22 @@ def calc_snow_depth_hybrid(tmat, lia_file, eps=0.4, coherence_threshold=0.5, ver
                 tval = nanfix_tmat(tmat, idx, verbose)
             abs_tval = np.abs(tval)
             snow_depth[idx] = 0
-            if abs_tval >= coherence_threshold:
-                sinc_inv = scp.newton(mysinc, args=(abs_tval, ), x0=1)
-                kz_val = 4 * np.pi * np.deg2rad(DEL_THETA) / (WAVELENGTH * np.sin(lia_val))
-                snow_depth[idx] = np.abs((np.arctan(tval.imag / tval.real) + 2 * eps * sinc_inv) / kz_val)
+            if np.round(abs_tval, 1) > coherence_threshold:
+                m = 4
+                if singlepass:
+                    m = 2
+                kz_val = m * np.pi * np.deg2rad(DEL_THETA) / (WAVELENGTH * np.sin(lia_val))
+                k1 = np.arctan(tval.imag / tval.real)
+                sinc_inv = scp.newton(mysinc, args=(abs_tval,), x0=1)
+                k2 = 2 * eps * sinc_inv
+                # k2 = eps * (np.pi - 2 * np.arcsin(abs_tval ** 0.8))
+                kv = k1 + k2
+                snow_depth[idx] = kv / kz_val
+                if snow_depth[idx] < 0:
+                    snow_depth[idx] = 0
                 if verbose:
                     print('At ', idx, 'Snow depth= ', snow_depth[idx])
-    if verbose:
+    if wf:
         np.save('Out/Snow_Depth', snow_depth)
         write_file(snow_depth.copy(), lia_file, 'Snow_Depth_Polinsar', is_complex=False)
     return snow_depth
@@ -280,14 +288,19 @@ def retrieve_pixel_coords(geo_coord, data_source):
 
 
 def get_image_stats(image_arr):
-    return np.min(image_arr), np.max(image_arr), np.mean(image_arr), np.std(image_arr)
+    return np.nanmin(image_arr), np.nanmax(image_arr), np.nanmean(image_arr), np.nanstd(image_arr)
 
-def validate_dry_snow(dsd_file, geocoords, nsize=(1, 1)):
-    dsd_file = gdal.Open(dsd_file)
-    px, py = retrieve_pixel_coords(geocoords, dsd_file)
-    fsd_arr = dsd_file.GetRasterBand(1).ReadAsArray()
-    fsd_dhundi = get_ensemble_window(fsd_arr, (py, px), nsize)
-    return get_image_stats(fsd_dhundi[fsd_dhundi != NO_DATA_VALUE])
+
+def check_values(img_file, geocoords, nsize=(1, 1), is_complex=False, is_dual=True):
+    img_file = gdal.Open(img_file)
+    px, py = retrieve_pixel_coords(geocoords, img_file)
+    if is_complex:
+        img_arr = get_complex_image(img_file, is_dual=is_dual)
+        img_arr = np.abs(img_arr)
+    else:
+        img_arr = get_image_array(img_file)
+    img_loc = get_ensemble_window(img_arr, (py, px), nsize)
+    return get_image_stats(img_loc)
 
 
 def senstivity_analysis(image_dict):
@@ -295,15 +308,15 @@ def senstivity_analysis(image_dict):
     s1, s2, ifg = get_interferogram(image_dict)
     print('Creating senstivity parameters ...')
     wrange = range(3, 66, 2)
-    ewindows = [(i, j) for i, j in zip(wrange, wrange)]
+    # ewindows = [(i, j) for i, j in zip(wrange, wrange)]
     # ewindows = cwindows.copy()
     # epsilon = np.round(np.linspace(0, 1, 11), 1)
     cwindows = [(5, 5)]
-    #ewindows = [(65, 65)]
+    ewindows = [(65, 65)]
     epsilon = [0.4]
     #coherence_threshold = np.round(np.linspace(0.10, 0.90, 17), 2)
-    coherence_threshold = [0.4]
-    outfile = open('sensitivity_ew1.csv', 'a+')
+    coherence_threshold = [0.7]
+    outfile = open('sensitivity_test2.csv', 'a+')
     outfile.write('CWindow Epsilon CThreshold SWindow Min(cm) Max(cm) Mean(cm) SD(cm)\n')
     img_file = image_dict['HV']
     print('Computation started...')
@@ -311,7 +324,11 @@ def senstivity_analysis(image_dict):
         ws1, ws2 = int(wsize1[0] / 2.), int(wsize1[1] / 2.)
         wstr1 = '(' + str(wsize1[0]) + ',' + str(wsize1[1]) + ')'
         print('Computing Coherence mat for ' + wstr1 + '...')
-        tmat = calc_ensemble_cohmat(s1, s2, ifg, img_file=img_file, wsize=(ws1, ws2), verbose=False)
+        tmat = calc_ensemble_cohmat(s1, s2, ifg, img_file=img_file, wsize=(ws1, ws2), verbose=False, wf=True)
+        # cr = check_values('Out/Coherence_Ensemble.tif', geocoords=(700089.771, 3581794.5556), is_complex=True)
+        # cr_str = wstr1 + ' ' + ' '.join([str(r) for r in cr]) + '\n'
+        # print(cr_str)
+        # outfile.write(cr_str)
         for eps in epsilon:
             for ct in coherence_threshold:
                 print('Computing Snow Depth ...')
@@ -320,7 +337,7 @@ def senstivity_analysis(image_dict):
                     ws1, ws2 = int(wsize2[0] / 2.), int(wsize2[1] / 2.)
                     print('Ensemble averaging snow depth ...')
                     avg_sd = get_ensemble_avg(snow_depth, (ws1, ws2), image_file=img_file, outfile='Avg_SD', verbose=False)
-                    vr = validate_dry_snow('Avg_SD.tif', (700089.771, 3581794.5556))  # Dhundi
+                    vr = check_values('Avg_SD.tif', (700089.771, 3581794.5556))  # Dhundi
                     vr_str = ' '.join([str(r) for r in vr])
                     wstr2 = '(' + str(wsize2[0]) + ',' + str(wsize2[1]) + ')'
                     final_str = wstr1 + ' ' + str(eps) + ' ' + str(ct) + ' ' + wstr2 + ' ' + vr_str + '\n'
@@ -334,4 +351,3 @@ image_dict = read_images('../THESIS/Thesis_Files/Polinsar/Clipped_Tifs')
 print('Images loaded...\n')
 senstivity_analysis(image_dict)
 #pol_vec_HV = calc_pol_vec_dict()['HV']
-
