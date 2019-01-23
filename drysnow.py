@@ -148,7 +148,27 @@ def get_interferogram(image_dict):
     return s1, s2, ifg
 
 
-def calc_coherence_mat(s1, s2, ifg, img_file, outfile, num_looks=10, verbose=True, wf=True):
+def nanfix_tmat_val(tmat, idx, verbose=True):
+    i = 1
+    while True:
+        window = get_ensemble_window(tmat, idx, (i, i))
+        tval = np.nanmean(window)
+        if verbose:
+            print('\nTVAL nanfix', i, np.abs(tval))
+        if not np.isnan(tval):
+            return tval
+        i += 1
+
+
+def nanfix_tmat_arr(tmat_arr, lia_arr, verbose=True):
+    for idx, tval in np.ndenumerate(tmat_arr):
+        if not np.isnan(lia_arr[idx]):
+            if np.isnan(tval):
+                tmat_arr[idx] = nanfix_tmat_val(tmat_arr, idx, verbose)
+    return tmat_arr
+
+
+def calc_coherence_mat(s1, s2, ifg, lia_file, img_file, outfile, num_looks=10, verbose=True, wf=True):
     tmat = np.full_like(ifg, np.nan, dtype=np.complex)
     max_y = ifg.shape[1]
     for itr in np.ndenumerate(tmat):
@@ -170,13 +190,15 @@ def calc_coherence_mat(s1, s2, ifg, img_file, outfile, num_looks=10, verbose=Tru
                 tmat[idx] = 1 + 0j
             if verbose:
                 print('Coherence at ', idx, '= ', np.abs(tmat[idx]))
+    lia_arr = get_image_array(lia_file)
+    tmat = nanfix_tmat_arr(tmat, lia_arr)
     if wf:
         np.save('Out/Coherence_' + outfile, tmat)
-        write_file(tmat, img_file, 'Out/Coherence_' + outfile)
+        write_file(tmat.copy(), img_file, 'Out/Coherence_' + outfile)
     return tmat
 
 
-def calc_ensemble_cohmat(s1, s2, ifg, img_file, outfile, wsize=(5, 5), verbose=True, wf=False):
+def calc_ensemble_cohmat(s1, s2, ifg, lia_file, img_file, outfile, wsize=(5, 5), verbose=True, wf=False):
     tmat = np.full_like(ifg, np.nan, dtype=np.complex)
     for itr in np.ndenumerate(tmat):
         idx = itr[0]
@@ -192,6 +214,8 @@ def calc_ensemble_cohmat(s1, s2, ifg, img_file, outfile, wsize=(5, 5), verbose=T
                 tmat[idx] = 1 + 0j
             if verbose:
                 print('Coherence at ', idx, '= ', np.abs(tmat[idx]))
+    lia_arr = get_image_array(lia_file)
+    tmat = nanfix_tmat_arr(tmat, lia_arr)
     if wf:
         np.save('Out/Coherence_Ensemble_' + outfile, tmat)
         write_file(tmat.copy(), img_file, 'Out/Coherence_Ensemble_' + outfile)
@@ -237,23 +261,15 @@ def get_ensemble_avg(image_arr, wsize, image_file, outfile, median=False, verbos
     return emat
 
 
-def nanfix_tmat(tmat, idx, verbose=True):
-    i = 1
-    while True:
-        window = get_ensemble_window(tmat, idx, (i, i))
-        tval = np.nanmean(window)
-        if verbose:
-            print('\nTVAL nanfix', i, np.abs(tval))
-        if not np.isnan(tval):
-            return tval
-        i += 1
-
-
 def get_ground_phase(tmat_vol, tmat_surf, wsize, image_file):
     a = np.abs(tmat_surf) ** 2 - 1
     b = 2 * np.real((tmat_vol - tmat_surf) * np.conj(tmat_surf))
     c = np.abs(tmat_vol - tmat_surf) ** 2
     lws = (-b - np.sqrt(b ** 2 - 4 * a * c)) / (2 * a)
+    if lws > 1:
+        lws = 1
+    if lws < 0:
+        lws = 0
     t = tmat_vol - tmat_surf * (1 - lws)
     ground_phase = np.arctan2(t.imag, t.real) % (2 * np.pi)
     return get_ensemble_avg(ground_phase, outfile='Ground_Med', wsize=wsize, image_file=image_file, median=True,
@@ -272,10 +288,6 @@ def calc_snow_depth_hybrid(tmat_vol, ground_phase, lia_file, eps=0.4, coherence_
         tval_vol = tmat_vol[idx]
         gval = ground_phase[idx]
         if not np.isnan(lia_val):
-            if np.isnan(tval_vol):
-                tval_vol = nanfix_tmat(tmat_vol, idx, verbose)
-            if np.isnan(gval):
-                gval = nanfix_tmat(ground_phase, idx, verbose)
             abs_tval_vol = np.abs(tval_vol)
             snow_depth[idx] = 0
             if abs_tval_vol >= coherence_threshold:
@@ -320,27 +332,27 @@ def check_values(img_file, geocoords, nsize=(1, 1), is_complex=False, is_dual=Tr
     return get_image_stats(img_loc)
 
 
-def get_coherence(s1, s2, ifg, wsize, img_file, coh_type, verbose, wf, outfile, validate=False):
+def get_coherence(s1, s2, ifg, wsize, lia_file, img_file, coh_type, verbose, wf, outfile, validate=False):
     cr = list()
     if coh_type == 'E':
         ws1, ws2 = int(wsize[0] / 2.), int(wsize[1] / 2.)
         wstr = '(' + str(wsize[0]) + ',' + str(wsize[1]) + ')'
         print('Computing Coherence mat for ' + wstr + '...')
-        tmat = calc_ensemble_cohmat(s1, s2, ifg, outfile=outfile, img_file=img_file, wsize=(ws1, ws2),
-                                    verbose=verbose, wf=wf)
+        tmat = calc_ensemble_cohmat(s1, s2, ifg, outfile=outfile, lia_file=lia_file, img_file=img_file,
+                                    wsize=(ws1, ws2), verbose=verbose, wf=wf)
         if validate:
             cr = check_values('Out/Coherence_Ensemble_' + outfile + '.tif', geocoords=(700089.771, 3581794.5556),
                               is_complex=True)
     else:
         wstr = str(wsize)
         print('Computing Coherence mat for ' + wstr + '...')
-        tmat = calc_coherence_mat(s1, s2, ifg, outfile=outfile, img_file=img_file, num_looks=wsize, verbose=verbose,
-                                  wf=wf)
+        tmat = calc_coherence_mat(s1, s2, ifg, outfile=outfile, lia_file=lia_file, img_file=img_file, num_looks=wsize,
+                                  verbose=verbose, wf=wf)
         if validate:
             cr = check_values('Out/Coherence_'+outfile + '.tif', geocoords=(700089.771, 3581794.5556), is_complex=True)
     if validate:
         cr_str = wstr + ' ' + ' '.join([str(r) for r in cr]) + '\n'
-        return tmat, cr_str
+        print(cr_str)
     return tmat, wstr
 
 
@@ -349,6 +361,7 @@ def senstivity_analysis(image_dict, coh_type='L'):
     print('Calculating s1, s2 and ifg ...')
     # s1_vol, s2_vol, ifg_vol = calc_interferogram(image_dict, pol_vec['HV'], outfile='Vol', verbose=False)
     # s1_surf, s2_surf, ifg_surf = calc_interferogram(image_dict, pol_vec['HH-VV'], outfile='Surf', verbose=False)
+    s1_vol, s2_vol, ifg_vol = np.load('Out/S1_Vol.npy'), np.load('Out/S2_Vol.npy'), np.load('Out/Ifg_Vol.npy')
     s1_surf, s2_surf, ifg_surf = np.load('Out/S1_Surf.npy'), np.load('Out/S2_Surf.npy'), np.load('Out/Ifg_Surf.npy')
     print('Creating senstivity parameters ...')
     wrange = range(3, 66, 2)
@@ -362,21 +375,21 @@ def senstivity_analysis(image_dict, coh_type='L'):
     cwindows = {'E': ewindows.copy(), 'L': clooks.copy()}
     epsilon = [0.4]
     coherence_threshold = [0.5]
-    cval = False
+    cval = True
 
     outfile = open('sensitivity_ssd_new.csv', 'a+')
     outfile.write('CWindow Epsilon CThreshold SWindow Min(cm) Max(cm) Mean(cm) SD(cm)\n')
     img_file = image_dict['HV']
+    lia_file = image_dict['LIA']
     print('Computation started...')
     for wsize1 in cwindows[coh_type]:
-        # tmat_vol, wstr1 = get_coherence(s1_vol, s2_vol, ifg_vol, outfile='Vol', wsize=wsize1, coh_type=coh_type,
-        #                                 img_file=img_file, verbose=False, wf=True, validate=cval)
-        # tmat_surf, wstr1 = get_coherence(s1_surf, s2_surf, ifg_surf, outfile='Surf', wsize=wsize1, coh_type=coh_type,
-        #                                 img_file=img_file, verbose=False, wf=True, validate=cval)
-        tmat_vol = np.load('Out/Coherence_Vol.npy')
-        tmat_surf = np.load('Out/Coherence_Surf.npy')
-        ground_phase = get_ground_phase(tmat_vol, tmat_surf, ewindows[0], image_file=img_file)
-        wstr1 = str(wsize1)
+        tmat_vol, wstr1 = get_coherence(s1_vol, s2_vol, ifg_vol, outfile='Vol', wsize=wsize1, coh_type=coh_type,
+                                        lia_file=lia_file, img_file=img_file, verbose=False, wf=True, validate=cval)
+        tmat_surf, wstr1 = get_coherence(s1_surf, s2_surf, ifg_surf, outfile='Surf', wsize=wsize1, coh_type=coh_type,
+                                         lia_file=lia_file, img_file=img_file, verbose=False, wf=True, validate=cval)
+        # tmat_vol = np.load('Out/Coherence_Vol.npy')
+        # tmat_surf = np.load('Out/Coherence_Surf.npy')
+        ground_phase = get_ground_phase(tmat_vol, tmat_surf, (10, 10), image_file=img_file)
         for eps in epsilon:
             for ct in coherence_threshold:
                 print('Computing Snow Depth ...')
