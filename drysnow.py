@@ -7,8 +7,10 @@ import affine
 
 MEAN_INC_TDX = (38.07691192626953 + 39.37236785888672) / 2.
 MEAN_INC_TSX = (38.104190826416016 + 39.37824630737305) / 2.
-DEL_THETA = np.abs(MEAN_INC_TDX - MEAN_INC_TSX)
 WAVELENGTH = 3.10880853
+HOA = 6318
+BPERP = 9634
+R = 98420.04252609884
 NO_DATA_VALUE = -32768
 
 
@@ -243,15 +245,20 @@ def get_ensemble_window(image_arr, index, wsize):
     return image_arr[startx: endx, starty: endy]
 
 
-def get_ensemble_avg(image_arr, wsize, image_file, outfile, median=False, verbose=True, wf=False):
+def get_ensemble_avg(image_arr, wsize, image_file, outfile, stat='mean', scale=False, scale_factor=None,
+                     verbose=True, wf=False):
     emat = np.full_like(image_arr, np.nan, dtype=np.float32)
     for index, value in np.ndenumerate(image_arr):
         if not np.isnan(value):
             ensemble_window = get_ensemble_window(image_arr, index, wsize)
-            if not median:
+            if stat == 'mean':
                 emat[index] = np.nanmean(ensemble_window)
-            else:
+            elif stat == 'med':
                 emat[index] = np.nanmedian(ensemble_window)
+            elif stat == 'max':
+                emat[index] = np.nanmax(ensemble_window)
+            if scale:
+                emat[index] *= scale_factor
             if verbose:
                 print(index, emat[index])
     if wf:
@@ -266,43 +273,37 @@ def get_ground_phase(tmat_vol, tmat_surf, wsize, image_file):
     b = 2 * np.real((tmat_vol - tmat_surf) * np.conj(tmat_surf))
     c = np.abs(tmat_vol - tmat_surf) ** 2
     lws = (-b - np.sqrt(b ** 2 - 4 * a * c)) / (2 * a)
-    if lws > 1:
-        lws = 1
-    if lws < 0:
-        lws = 0
+    lws[lws > 1] = 1
+    lws[lws < 0] = 0
     t = tmat_vol - tmat_surf * (1 - lws)
     ground_phase = np.arctan2(t.imag, t.real) % (2 * np.pi)
-    return get_ensemble_avg(ground_phase, outfile='Ground_Med', wsize=wsize, image_file=image_file, median=True,
+    return get_ensemble_avg(ground_phase, outfile='Ground_Med', wsize=wsize, image_file=image_file, stat='med',
                             wf=True)
 
 
-def calc_snow_depth_hybrid(tmat_vol, ground_phase, lia_file, eps=0.4, coherence_threshold=0.5, verbose=True, wf=False, single_pass=True):
+def calc_snow_depth_hybrid(tmat_vol, ground_phase, kz, lia_file, eps=0.4, coherence_threshold=0.5, verbose=True, wf=False):
     lia = get_image_array(lia_file)
     snow_depth = np.full_like(tmat_vol, np.nan, dtype=np.float32)
-    m = 4
-    if single_pass:
-        m = 2
     for itr in np.ndenumerate(snow_depth):
         idx = itr[0]
         lia_val = np.deg2rad(lia[idx])
         tval_vol = tmat_vol[idx]
         gval = ground_phase[idx]
+        kz_val = kz[idx]
         if not np.isnan(lia_val):
             abs_tval_vol = np.abs(tval_vol)
             snow_depth[idx] = 0
             if abs_tval_vol >= coherence_threshold:
-                kz_val = m * np.pi * np.deg2rad(DEL_THETA) / (WAVELENGTH * np.sin(lia_val))
                 t1 = np.arctan2(tval_vol.imag, tval_vol.real) % (2 * np.pi)
                 k1 = t1 - gval
                 k2 = 2 * eps * scp.newton(mysinc, args=(abs_tval_vol,), x0=1)
                 kv = k1 + k2
-                snow_depth[idx] = kv / kz_val
-                if snow_depth[idx] < 0:
-                    snow_depth[idx] = 0
+                snow_depth[idx] = np.abs(kv / kz_val)
                 if verbose:
-                    print('At ', idx, '(t1, t2, k1, k2, kv)= ', t1, gval, k1, k2, kv, 'Snow depth= ', snow_depth[idx])
+                    print('At ', idx, '(kz, t1, t2, k1, k2, kv)= ', kz_val, t1, gval, k1, k2, kv, 'Snow depth= ', snow_depth[idx])
     if wf:
         np.save('Out/Snow_Depth', snow_depth)
+        np.save('Out/Wavenumber', kz)
         write_file(snow_depth.copy(), lia_file, 'Snow_Depth_Polinsar', is_complex=False)
     return snow_depth
 
@@ -356,6 +357,18 @@ def get_coherence(s1, s2, ifg, wsize, lia_file, img_file, coh_type, verbose, wf,
     return tmat, wstr
 
 
+def compute_vertical_wavenumber(lia_file, wsize, outfile, img_file, scale_factor, is_single_pass=True):
+    lia = get_image_array(lia_file)
+    # del_theta = np.deg2rad(np.abs(MEAN_INC_TDX - MEAN_INC_TSX))
+    del_theta = np.abs(MEAN_INC_TDX - MEAN_INC_TSX)
+    m = 4
+    if is_single_pass:
+        m = 2
+    kz = m * np.pi * np.deg2rad(del_theta) / (WAVELENGTH * np.sin(np.deg2rad(lia)))
+    kz = get_ensemble_avg(kz, wsize=wsize, image_file=img_file, scale=True, scale_factor=scale_factor, outfile=outfile,
+                          wf=True)
+    return kz
+
 def senstivity_analysis(image_dict, coh_type='L'):
     pol_vec = calc_pol_vec_dict()
     print('Calculating s1, s2 and ifg ...')
@@ -374,7 +387,7 @@ def senstivity_analysis(image_dict, coh_type='L'):
     clooks = [3]
     cwindows = {'E': ewindows.copy(), 'L': clooks.copy()}
     epsilon = [0.4]
-    coherence_threshold = [0.5]
+    coherence_threshold = [0]
     cval = True
 
     outfile = open('sensitivity_ssd_new.csv', 'a+')
@@ -383,17 +396,25 @@ def senstivity_analysis(image_dict, coh_type='L'):
     lia_file = image_dict['LIA']
     print('Computation started...')
     for wsize1 in cwindows[coh_type]:
-        tmat_vol, wstr1 = get_coherence(s1_vol, s2_vol, ifg_vol, outfile='Vol', wsize=wsize1, coh_type=coh_type,
-                                        lia_file=lia_file, img_file=img_file, verbose=False, wf=True, validate=cval)
-        tmat_surf, wstr1 = get_coherence(s1_surf, s2_surf, ifg_surf, outfile='Surf', wsize=wsize1, coh_type=coh_type,
-                                         lia_file=lia_file, img_file=img_file, verbose=False, wf=True, validate=cval)
-        # tmat_vol = np.load('Out/Coherence_Vol.npy')
+        # tmat_vol, wstr1 = get_coherence(s1_vol, s2_vol, ifg_vol, outfile='Vol', wsize=wsize1, coh_type=coh_type,
+        #                                 lia_file=lia_file, img_file=img_file, verbose=False, wf=True, validate=cval)
+        # tmat_surf, wstr1 = get_coherence(s1_surf, s2_surf, ifg_surf, outfile='Surf', wsize=wsize1, coh_type=coh_type,
+        #                                  lia_file=lia_file, img_file=img_file, verbose=False, wf=True, validate=cval)
+        tmat_vol = np.load('Out/Coherence_Vol.npy')
         # tmat_surf = np.load('Out/Coherence_Surf.npy')
-        ground_phase = get_ground_phase(tmat_vol, tmat_surf, (10, 10), image_file=img_file)
+        print('Computing ground phase ...')
+        # ground_phase = get_ground_phase(tmat_vol, tmat_surf, (10, 10), image_file=img_file)
+        ground_phase = np.load('Out/Ground_Med.npy')
+        wstr1 = str(wsize1)
         for eps in epsilon:
             for ct in coherence_threshold:
-                print('Computing Snow Depth ...')
-                snow_depth = calc_snow_depth_hybrid(tmat_vol, ground_phase, lia_file=image_dict['LIA'], eps=eps,
+                print('Computing vertical wavenumber ...')
+                kz = compute_vertical_wavenumber(lia_file, img_file=img_file, scale_factor=10, outfile='Wavenumber',
+                                                 wsize=(10, 10))
+                # kz = np.load('Out/Wavenumber.npy')
+                print('Computing snow depth ...')
+                # topo = get_image_array(image_dict['TOPO']) % (2 * np.pi)
+                snow_depth = calc_snow_depth_hybrid(tmat_vol, ground_phase, kz, lia_file=lia_file, eps=eps,
                                                     coherence_threshold=ct, verbose=True)
                 for wsize2 in ewindows:
                     ws1, ws2 = int(wsize2[0] / 2.), int(wsize2[1] / 2.)
