@@ -162,7 +162,7 @@ def nanfix_tmat_val(tmat, idx, verbose=True):
         i += 1
 
 
-def nanfix_tmat_arr(tmat_arr, lia_arr, verbose=True):
+def nanfix_tmat_arr(tmat_arr, lia_arr, verbose=False):
     for idx, tval in np.ndenumerate(tmat_arr):
         if not np.isnan(lia_arr[idx]):
             if np.isnan(tval):
@@ -374,30 +374,30 @@ def senstivity_analysis(image_dict, coh_type='L'):
     s1_vol, s2_vol, ifg_vol = np.load('Out/S1_Vol.npy'), np.load('Out/S2_Vol.npy'), np.load('Out/Ifg_Vol.npy')
     s1_surf, s2_surf, ifg_surf = np.load('Out/S1_Surf.npy'), np.load('Out/S2_Surf.npy'), np.load('Out/Ifg_Surf.npy')
     print('Creating senstivity parameters ...')
-    # wrange = range(9, 65, 2)
-    # ewindows = [(i, j) for i, j in zip(wrange, wrange)]
+    wrange = range(3, 66, 2)
+    ewindows = [(i, j) for i, j in zip(wrange, wrange)]
     # epsilon = np.round(np.linspace(0, 1, 11), 1)
-    clooks = range(2, 21)
+    # clooks = range(2, 21)
     # coherence_threshold = np.round(np.linspace(0.10, 0.90, 17), 2)
     # cwindows = [(5, 5)]
-    ewindows = [(5, 5)]
-    # clooks = [3]
+    # ewindows = [(65, 65)]
+    clooks = [3]
     cwindows = {'E': ewindows.copy(), 'L': clooks}
     epsilon = [0.4]
     coherence_threshold = [0.6]
-    cval = True
+    # cval = True
 
-    outfile = open('sensitivity_new_clook.csv', 'a+')
+    outfile = open('sensitivity_new_snow_coh2.csv', 'a+')
     outfile.write('CWindow Epsilon CThreshold SWindow Min(cm) Max(cm) Mean(cm) SD(cm)\n')
     lia_file = image_dict['LIA']
     print('Computation started...')
     for wsize1 in cwindows[coh_type]:
-        # tmat_vol, wstr1 = get_coherence(s1_vol, s2_vol, ifg_vol, outfile='Vol', wsize=wsize1, coh_type=coh_type,
-        #                                lia_file=lia_file, verbose=False, wf=False, validate=cval)
-        # tmat_surf, wstr1 = get_coherence(s1_surf, s2_surf, ifg_surf, outfile='Surf', wsize=wsize1, coh_type=coh_type,
-        #                                 lia_file=lia_file, verbose=False, wf=False, validate=cval)
-        tmat_vol = np.load('Out/Coherence_Vol.npy')
-        tmat_surf = np.load('Out/Coherence_Surf.npy')
+        tmat_vol, wstr1 = get_coherence(s1_vol, s2_vol, ifg_vol, outfile='Vol', wsize=wsize1, coh_type=coh_type,
+                                        lia_file=lia_file, verbose=False, wf=True, validate=cval)
+        tmat_surf, wstr1 = get_coherence(s1_surf, s2_surf, ifg_surf, outfile='Surf', wsize=wsize1, coh_type=coh_type,
+                                         lia_file=lia_file, verbose=False, wf=True, validate=cval)
+        # tmat_vol = np.load('Out/Coherence_Vol.npy')
+        # tmat_surf = np.load('Out/Coherence_Surf.npy')
         print('Computing ground phase ...')
         ground_phase = get_ground_phase(tmat_vol, tmat_surf, (10, 10), lia_file=lia_file)
         # ground_phase = np.load('Out/Ground_Med.npy')
@@ -418,7 +418,8 @@ def senstivity_analysis(image_dict, coh_type='L'):
                     print('Ensemble averaging snow depth ...')
                     avg_sd = get_ensemble_avg(snow_depth, (ws1, ws2), lia_file, outfile='Avg_SD', verbose=False,
                                               wf=True)
-                    vr = check_values('Avg_SD.tif', (700089.771, 3581794.5556))  # Dhundi
+                    # avg_sd = np.load('Out/Avg_SD.npy')
+                    vr = check_values(avg_sd, lia_file, (700089.771, 3581794.5556))  # Dhundi
                     vr_str = ' '.join([str(r) for r in vr])
                     wstr2 = '(' + str(wsize2[0]) + ',' + str(wsize2[1]) + ')'
                     final_str = wstr1 + ' ' + str(eps) + ' ' + str(ct) + ' ' + wstr2 + ' ' + vr_str + '\n'

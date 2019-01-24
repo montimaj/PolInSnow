@@ -1,0 +1,6 @@
+CWindow Epsilon CThreshold SWindow Min(cm) Max(cm) Mean(cm) SD(cm)
+2 0.4 0.7 (61,61) 53.56926 55.45849 54.50257 0.71574825
+2 0.4 0.7 (63,63) 53.24504 55.326782 54.27325 0.7151399
+2 0.4 0.7 (65,65) 53.093082 55.114304 54.167072 0.6815175
+CWindow Epsilon CThreshold SWindow Min(cm) Max(cm) Mean(cm) SD(cm)
+2 0.4 0.8 (65,65) 53.093082 55.114304 54.167072 0.6815175
