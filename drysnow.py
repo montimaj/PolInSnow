@@ -299,7 +299,10 @@ def calc_snow_depth_hybrid(tmat_vol, ground_phase, kz, lia_file, eps=0.4, cohere
             if abs_tval_vol >= coherence_threshold:
                 t1 = np.arctan2(tval_vol.imag, tval_vol.real) % (2 * np.pi)
                 k1 = t1 - gval
-                k2 = 2 * eps * scp.newton(mysinc, args=(abs_tval_vol,), x0=1)
+                sinc_inv = scp.newton(mysinc, args=(abs_tval_vol,), x0=1)
+                k2 = 0
+                if not np.isnan(sinc_inv):
+                    k2 = 2 * eps * sinc_inv
                 kv[idx] = k1 + k2
                 snow_depth[idx] = np.abs(kv[idx] / kz_val)
                 if verbose:
@@ -377,14 +380,14 @@ def senstivity_analysis(image_dict, coh_type='L'):
     # wrange = range(3, 66, 2)
     # ewindows = [(i, j) for i, j in zip(wrange, wrange)]
     # epsilon = np.round(np.linspace(0, 1, 11), 1)
-    epsilon = np.round(np.linspace(0.6, 1, 6), 1)
+    # epsilon = np.round(np.linspace(0.6, 1, 6), 1)
     # clooks = range(2, 21)
     # coherence_threshold = np.round(np.linspace(0.10, 0.90, 17), 2)
     # cwindows = [(5, 5)]
-    ewindows = [(49, 49)]
+    ewindows = [(60, 60)]
     clooks = [3]
     cwindows = {'E': ewindows.copy(), 'L': clooks}
-    # epsilon = [0.3]
+    epsilon = [0.]
     coherence_threshold = [0.6]
     cval = False
 
@@ -411,13 +414,13 @@ def senstivity_analysis(image_dict, coh_type='L'):
                 kz = np.load('Out/Wavenumber.npy')
                 print('Computing snow depth ...')
                 # topo = get_image_array(image_dict['TOPO']) % (2 * np.pi)
-                snow_depth = calc_snow_depth_hybrid(tmat_vol, ground_phase, kz, lia_file=lia_file, eps=eps,
-                                                    coherence_threshold=ct, wf=True, verbose=False)
-                # snow_depth = np.load('Out/Snow_Depth.npy')
+                # snow_depth = calc_snow_depth_hybrid(tmat_vol, ground_phase, kz, lia_file=lia_file, eps=eps,
+                #                                    coherence_threshold=ct, wf=True, verbose=False)
+                snow_depth = np.load('Out/Snow_Depth.npy')
                 for wsize2 in ewindows:
                     ws1, ws2 = int(wsize2[0] / 2.), int(wsize2[1] / 2.)
                     print('Ensemble averaging snow depth ...')
-                    avg_sd = get_ensemble_avg(snow_depth, (ws1, ws2), lia_file, outfile='Avg_SD', verbose=False,
+                    avg_sd = get_ensemble_avg(snow_depth, (ws1, ws2), lia_file, outfile='Avg_SD_60', verbose=False,
                                               wf=True)
                     # avg_sd = np.load('Out/Avg_SD.npy')
                     vr = check_values(avg_sd, lia_file, (700089.771, 3581794.5556))  # Dhundi
