@@ -374,44 +374,45 @@ def senstivity_analysis(image_dict, coh_type='L'):
     s1_vol, s2_vol, ifg_vol = np.load('Out/S1_Vol.npy'), np.load('Out/S2_Vol.npy'), np.load('Out/Ifg_Vol.npy')
     s1_surf, s2_surf, ifg_surf = np.load('Out/S1_Surf.npy'), np.load('Out/S2_Surf.npy'), np.load('Out/Ifg_Surf.npy')
     print('Creating senstivity parameters ...')
-    wrange = range(3, 66, 2)
-    ewindows = [(i, j) for i, j in zip(wrange, wrange)]
+    # wrange = range(3, 66, 2)
+    # ewindows = [(i, j) for i, j in zip(wrange, wrange)]
     # epsilon = np.round(np.linspace(0, 1, 11), 1)
+    epsilon = np.round(np.linspace(0.6, 1, 6), 1)
     # clooks = range(2, 21)
     # coherence_threshold = np.round(np.linspace(0.10, 0.90, 17), 2)
     # cwindows = [(5, 5)]
-    # ewindows = [(65, 65)]
+    ewindows = [(49, 49)]
     clooks = [3]
     cwindows = {'E': ewindows.copy(), 'L': clooks}
-    epsilon = [0.4]
+    # epsilon = [0.3]
     coherence_threshold = [0.6]
-    # cval = True
+    cval = False
 
-    outfile = open('sensitivity_new_snow_coh2.csv', 'a+')
+    outfile = open('sensitivity_new_snow_eps.csv', 'a+')
     outfile.write('CWindow Epsilon CThreshold SWindow Min(cm) Max(cm) Mean(cm) SD(cm)\n')
     lia_file = image_dict['LIA']
     print('Computation started...')
     for wsize1 in cwindows[coh_type]:
-        tmat_vol, wstr1 = get_coherence(s1_vol, s2_vol, ifg_vol, outfile='Vol', wsize=wsize1, coh_type=coh_type,
-                                        lia_file=lia_file, verbose=False, wf=True, validate=cval)
-        tmat_surf, wstr1 = get_coherence(s1_surf, s2_surf, ifg_surf, outfile='Surf', wsize=wsize1, coh_type=coh_type,
-                                         lia_file=lia_file, verbose=False, wf=True, validate=cval)
-        # tmat_vol = np.load('Out/Coherence_Vol.npy')
+        # tmat_vol, wstr1 = get_coherence(s1_vol, s2_vol, ifg_vol, outfile='Vol', wsize=wsize1, coh_type=coh_type,
+        #                                lia_file=lia_file, verbose=False, wf=True, validate=cval)
+        # tmat_surf, wstr1 = get_coherence(s1_surf, s2_surf, ifg_surf, outfile='Surf', wsize=wsize1, coh_type=coh_type,
+        #                                 lia_file=lia_file, verbose=False, wf=True, validate=cval)
+        tmat_vol = np.load('Out/Coherence_Vol.npy')
         # tmat_surf = np.load('Out/Coherence_Surf.npy')
         print('Computing ground phase ...')
-        ground_phase = get_ground_phase(tmat_vol, tmat_surf, (10, 10), lia_file=lia_file)
-        # ground_phase = np.load('Out/Ground_Med.npy')
+        # ground_phase = get_ground_phase(tmat_vol, tmat_surf, (10, 10), lia_file=lia_file)
+        ground_phase = np.load('Out/Ground_Med.npy')
         wstr1 = str(wsize1)
         for eps in epsilon:
             for ct in coherence_threshold:
                 print('Computing vertical wavenumber ...')
-                kz = compute_vertical_wavenumber(lia_file, scale_factor=10, outfile='Wavenumber',
-                                                 wsize=(10, 10))
-                # kz = np.load('Out/Wavenumber.npy')
+                # kz = compute_vertical_wavenumber(lia_file, scale_factor=10, outfile='Wavenumber',
+                #                                 wsize=(10, 10))
+                kz = np.load('Out/Wavenumber.npy')
                 print('Computing snow depth ...')
                 # topo = get_image_array(image_dict['TOPO']) % (2 * np.pi)
                 snow_depth = calc_snow_depth_hybrid(tmat_vol, ground_phase, kz, lia_file=lia_file, eps=eps,
-                                                    coherence_threshold=ct, wf=True, verbose=True)
+                                                    coherence_threshold=ct, wf=True, verbose=False)
                 # snow_depth = np.load('Out/Snow_Depth.npy')
                 for wsize2 in ewindows:
                     ws1, ws2 = int(wsize2[0] / 2.), int(wsize2[1] / 2.)
