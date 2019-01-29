@@ -15,6 +15,12 @@ NO_DATA_VALUE = -32768
 
 
 def read_images(path, imgformat='*.tif'):
+    """
+    Read images in a directory
+    :param path: Directory path
+    :param imgformat: Type of image file
+    :return: Dictionary of GDAL Opened references/ pointers to specific files
+    """
     print("Reading images...")
     images = {}
     files = os.path.join(path, imgformat)
@@ -26,6 +32,12 @@ def read_images(path, imgformat='*.tif'):
 
 
 def get_complex_image(img_file, is_dual=False):
+    """
+    Read complex image stored either in four bands or two separate bands and set nan values accordingly
+    :param img_file: GDAL reference file
+    :param is_dual: True if image file is stored in two separate bands
+    :return: If dual is set true, a complex numpy array is returned, numpy array tuple otherwise
+    """
     mst = img_file.GetRasterBand(1).ReadAsArray() + img_file.GetRasterBand(2).ReadAsArray() * 1j
     mst[mst == np.complex(NO_DATA_VALUE, NO_DATA_VALUE)] = np.nan
     if not is_dual:
@@ -36,12 +48,24 @@ def get_complex_image(img_file, is_dual=False):
 
 
 def get_image_array(img_file):
+    """
+    Read real numpy arrays from file
+    :param img_file: GDAL reference file
+    :return: Numpy array with nan set accordingly
+    """
     arr = img_file.GetRasterBand(1).ReadAsArray()
     arr[arr == NO_DATA_VALUE] = np.nan
     return arr
 
 
 def set_nan_img(img_arr, layover_file, forest_file):
+    """
+    Set nan values to specific images using layover and forest masks
+    :param img_arr: Image array whose nan values are to be set
+    :param layover_file: Layover file
+    :param forest_file: Forest file
+    :return: Nan set array
+    """
     layover = get_image_array(layover_file)
     forest = get_image_array(forest_file)
     for idx, lval in np.ndenumerate(layover):
@@ -51,6 +75,14 @@ def set_nan_img(img_arr, layover_file, forest_file):
 
 
 def calc_pol_vec(alpha, beta, eps, mu):
+    """
+    Calculate Pauli polarisation vector
+    :param alpha: alpha value
+    :param beta: beta value
+    :param eps: epsilon value
+    :param mu: mu value
+    :return: Polarisation vectors
+    """
     alpha = np.deg2rad(alpha)
     beta = np.deg2rad(beta)
     mu = np.deg2rad(mu)
@@ -59,6 +91,10 @@ def calc_pol_vec(alpha, beta, eps, mu):
 
 
 def calc_pol_vec_dict():
+    """
+    Generate polarisation vector dictionary
+    :return: Dictionary of polarisation vectors
+    """
     pol_vec_dict = dict()
     pol_vec_dict['HH'] = calc_pol_vec(45, 0, 0, 0)
     pol_vec_dict['HV'] = pol_vec_dict['VH'] = calc_pol_vec(90, 90, 0, 0)
@@ -72,6 +108,15 @@ def calc_pol_vec_dict():
 
 
 def write_file(arr, src_file, outfile='test', no_data_value=NO_DATA_VALUE, is_complex=True):
+    """
+    Write image files in TIF format
+    :param arr: Image array to write
+    :param src_file: Original image file for retrieving affine transformation parameters
+    :param outfile: Output file path
+    :param no_data_value: No data value to be set
+    :param is_complex: If true, write complex image array in two separate bands
+    :return: None
+    """
 
     driver = gdal.GetDriverByName("GTiff")
     if is_complex:
@@ -93,6 +138,17 @@ def write_file(arr, src_file, outfile='test', no_data_value=NO_DATA_VALUE, is_co
 
 
 def calc_interferogram(image_dict, pol_vec, outfile, apply_masks=True, verbose=True, wf=True):
+    """
+    Calculate Pol-InSAR interferogram
+    :param image_dict: Image dictionary containing GDAL references
+    :param pol_vec: Polarisation vector
+    :param outfile: Output file(s) path
+    :param apply_masks: Set true for applying layover and shadow masks
+    :param verbose: Set true for detailed logs
+    :param wf: Set true for writing intermediate results
+    :return: Tuple containing master array, slave array and interferogram
+    """
+
     hh_file = image_dict['HH']
     hv_file = image_dict['HV']
     vh_file = image_dict['VH']
@@ -146,6 +202,12 @@ def calc_interferogram(image_dict, pol_vec, outfile, apply_masks=True, verbose=T
 
 
 def get_interferogram(image_dict):
+    """
+    Read topographic phase removed interferogram. The preferred option is to use #calc_interferogram(...)
+    :param image_dict: Image dictionary containing GDAL references
+    :return: Tuple containing master array, slave array and interferogram
+    """
+
     hv_file = image_dict['HV']
     vh_file = image_dict['VH']
     ifg = get_complex_image(image_dict['IFG'], is_dual=True)
@@ -165,6 +227,14 @@ def get_interferogram(image_dict):
 
 
 def nanfix_tmat_val(tmat, idx, verbose=True):
+    """
+    Fix nan value occuring due to incorrect terrain correction
+    :param tmat: Complex coherency matrix
+    :param idx: Index at which the nan value is to be replaced by the mean of its neighbourhood
+    :param verbose: Set true for detailed logs
+    :return: Corrected element
+    """
+
     i = 1
     while True:
         window = get_ensemble_window(tmat, idx, (i, i))
@@ -177,6 +247,18 @@ def nanfix_tmat_val(tmat, idx, verbose=True):
 
 
 def nanfix_tmat_arr(tmat_arr, lia_arr, layover_arr=None, forest_arr=None, apply_masks=True, verbose=False):
+    """
+    Fix nan values occuring due to incorrect terrain correction
+    :param tmat_arr: Complex coherency matrix
+    :param lia_arr: Local incidence angle array or any coregistered image array having non-nan values
+    in the area of interest
+    :param layover_arr: Layover array
+    :param forest_arr: Forest array
+    :param apply_masks: Set true for applying layover and forest masks
+    :param verbose: Set true for detailed logs
+    :return:
+    """
+
     for idx, tval in np.ndenumerate(tmat_arr):
         if not np.isnan(lia_arr[idx]):
             if np.isnan(tval):
@@ -189,6 +271,19 @@ def nanfix_tmat_arr(tmat_arr, lia_arr, layover_arr=None, forest_arr=None, apply_
 
 
 def calc_coherence_mat(s1, s2, ifg, img_dict, outfile, num_looks=10, apply_masks=True, verbose=True, wf=True):
+    """
+    Calculate complex coherency matrix based on looks
+    :param s1: Master image array
+    :param s2: Slave image array
+    :param ifg: Interferogram array
+    :param img_dict: Image dictionary containing GDAL references
+    :param outfile: Output file path
+    :param num_looks: Number of looks to apply
+    :param apply_masks: Set true for applying layover and forest masks
+    :param verbose: Set true for detailed logs
+    :param wf: Set true to save intermediate results
+    :return: Nan fixed complex coherency matrix
+    """
     tmat = np.full_like(ifg, np.nan, dtype=np.complex)
     max_y = ifg.shape[1]
     for itr in np.ndenumerate(tmat):
@@ -224,6 +319,20 @@ def calc_coherence_mat(s1, s2, ifg, img_dict, outfile, num_looks=10, apply_masks
 
 
 def calc_ensemble_cohmat(s1, s2, ifg, img_dict, outfile, wsize=(5, 5), apply_masks=True, verbose=True, wf=False):
+    """
+    Calculate complex coherency matrix based on ensemble averaging
+    :param s1: Master image array
+    :param s2: Slave image array
+    :param ifg: Interferogram array
+    :param img_dict: Image dictionary containing GDAL references
+    :param outfile: Output file path
+    :param wsize: Ensemble window size (should be half of desired window size)
+    :param apply_masks: Set true for applying layover and forest masks
+    :param verbose: Set true for detailed logs
+    :param wf: Set true to save intermediate results
+    :return: Nan fixed complex coherency matrix
+    """
+
     tmat = np.full_like(ifg, np.nan, dtype=np.complex)
     for itr in np.ndenumerate(tmat):
         idx = itr[0]
@@ -253,10 +362,24 @@ def calc_ensemble_cohmat(s1, s2, ifg, img_dict, outfile, wsize=(5, 5), apply_mas
 
 
 def mysinc(x, c):
+    """
+    Custom SINC function for root finding in the hybrid height inversion model
+    :param x: SINC argument
+    :param c: Constant
+    :return: SINC(x) - c
+    """
     return np.sinc(x) - c
 
 
 def get_ensemble_window(image_arr, index, wsize):
+    """
+    Subset image array based on the window size
+    :param image_arr: Image array whose subset is to be returned
+    :param index: Central subset index
+    :param wsize: Ensemble window size (should be half of desired window size)
+    :return: Subset array
+    """
+
     startx = index[0] - wsize[0]
     starty = index[1] - wsize[1]
     if startx < 0:
@@ -275,6 +398,19 @@ def get_ensemble_window(image_arr, index, wsize):
 
 def get_ensemble_avg(image_arr, wsize, image_file, outfile, stat='mean', scale_factor=None,
                      verbose=True, wf=False):
+    """
+    Perform Ensemble Filtering based on mean, median or maximum
+    :param image_arr: Image array to filter
+    :param wsize: Ensemble window size (should be half of desired window size)
+    :param image_file: Original GDAL reference for writing output image
+    :param outfile: Outfile file path
+    :param stat: Statistics to use while ensemble filtering (mean, med, max)
+    :param scale_factor: Scale factor to apply (specifically used for vertical wavenumber)
+    :param verbose: Set true for detailed logs
+    :param wf: Set true to save intermediate results
+    :return: Ensemble filtered array
+    """
+
     emat = np.full_like(image_arr, np.nan, dtype=np.float32)
     for index, value in np.ndenumerate(image_arr):
         if not np.isnan(value):
@@ -297,6 +433,17 @@ def get_ensemble_avg(image_arr, wsize, image_file, outfile, stat='mean', scale_f
 
 
 def get_ground_phase(tmat_vol, tmat_surf, wsize, img_dict, apply_masks, verbose=True):
+    """
+    Calculate ground phase for HH-VV polarisation vector
+    :param tmat_vol: Volume coherence array
+    :param tmat_surf: Surface coherence array
+    :param wsize: Ensemble window size (should be half of desired window size)
+    :param img_dict: Image dictionary containing GDAL references
+    :param apply_masks: Set true for applying layover and forest masks
+    :param verbose: Set true for detailed logs
+    :return: Median filtered ground phase
+    """
+
     a = np.abs(tmat_surf) ** 2 - 1
     b = 2 * np.real((tmat_vol - tmat_surf) * np.conj(tmat_surf))
     c = np.abs(tmat_vol - tmat_surf) ** 2
@@ -316,7 +463,21 @@ def get_ground_phase(tmat_vol, tmat_surf, wsize, img_dict, apply_masks, verbose=
                             verbose=verbose, wf=True)
 
 
-def calc_snow_depth_hybrid(tmat_vol, ground_phase, kz, lia_file, eps=0.4, coherence_threshold=0.5, verbose=True, wf=False):
+def calc_snow_depth_hybrid(tmat_vol, ground_phase, kz, img_file, eta=0.4, coherence_threshold=0.5, verbose=True,
+                           wf=False):
+    """
+    Calculate snow depth using Pol-InSAR based hybrid height inversion model
+    :param tmat_vol: Volume coherence array
+    :param ground_phase: Ground phase array
+    :param kz: Vertical wavenumber array
+    :param img_file: Original GDAL reference for writing output image
+    :param eta: Snow depth scaling factor (0<=eta<=1)
+    :param coherence_threshold: Coherence threshold (0<=coherence_threshold<=1)
+    :param verbose: Set true for detailed logs
+    :param wf: Set true to save intermediate results
+    :return: Snow depth array
+    """
+
     snow_depth = np.full_like(tmat_vol, np.nan, dtype=np.float32)
     kv = snow_depth.copy()
     for itr in np.ndenumerate(snow_depth):
@@ -333,7 +494,7 @@ def calc_snow_depth_hybrid(tmat_vol, ground_phase, kz, lia_file, eps=0.4, cohere
                 sinc_inv = scp.newton(mysinc, args=(abs_tval_vol,), x0=1)
                 k2 = 0
                 if not np.isnan(sinc_inv):
-                    k2 = 2 * eps * sinc_inv
+                    k2 = 2 * eta * sinc_inv
                 kv[idx] = k1 + k2
                 snow_depth[idx] = np.abs(kv[idx] / kz_val)
                 if verbose:
@@ -343,11 +504,19 @@ def calc_snow_depth_hybrid(tmat_vol, ground_phase, kz, lia_file, eps=0.4, cohere
         np.save('Out/KV', kv)
         np.save('Out/Snow_Depth', snow_depth)
         np.save('Out/Wavenumber', kz)
-        write_file(snow_depth.copy(), lia_file, 'Snow_Depth_Polinsar', is_complex=False)
+        write_file(snow_depth.copy(), img_file, 'Snow_Depth_Polinsar', is_complex=False)
     return snow_depth
 
 
 def retrieve_pixel_coords(geo_coord, data_source):
+    """
+    Get pixels coordinates from geo-coordinates
+    :param geo_coord: Geo-cooridnate tuple
+    :param data_source: Original GDAL reference having affine transformation parameters
+    :return: Pixel coordinates in x and y direction (should be reversed in the caller function to get the actual pixel
+    position)
+    """
+
     x, y = geo_coord[0], geo_coord[1]
     forward_transform = affine.Affine.from_gdal(*data_source.GetGeoTransform())
     reverse_transform = ~forward_transform
@@ -356,8 +525,18 @@ def retrieve_pixel_coords(geo_coord, data_source):
     return px, py
 
 
-def check_values(img_arr, lia_file, geocoords, nsize=(1, 1), is_complex=False):
-    px, py = retrieve_pixel_coords(geocoords, lia_file)
+def check_values(img_arr, img_file, geocoords, nsize=(1, 1), is_complex=False):
+    """
+    Validate results
+    :param img_arr: Image array to validate
+    :param img_file: Original GDAL reference having affine transformation parameters
+    :param geocoords: Geo-coordinates in tuple format
+    :param nsize: Validation window size (should be half of the desired window size)
+    :param is_complex: Set true for complex images such as the coherency image
+    :return: Min, max, mean and standard deviation as tuple
+    """
+
+    px, py = retrieve_pixel_coords(geocoords, img_file)
     if is_complex:
         img_arr = np.abs(img_arr)
     img_loc = get_ensemble_window(img_arr, (py, px), nsize)
@@ -365,13 +544,29 @@ def check_values(img_arr, lia_file, geocoords, nsize=(1, 1), is_complex=False):
 
 
 def get_coherence(s1, s2, ifg, wsize, img_dict, apply_masks, coh_type, verbose, wf, outfile, validate=False):
+    """
+    Coherency matrix caller function
+    :param s1: Master image array
+    :param s2: Slave image array
+    :param ifg: Interferogram array
+    :param wsize: Ensemble window size (should be half of desired window size) or number of looks
+    :param img_dict: Image dictionary containing GDAL references
+    :param apply_masks: Set true for applying layover and forest masks
+    :param coh_type: Set 'L' for look based coherence and 'E' for ensemble window based
+    :param verbose: Set true for detailed logs
+    :param wf: Set true to save intermediate results
+    :param outfile: Output file path
+    :param validate: Validate results if set to true
+    :return: Complex coherency matrix and window size string as tuple
+    """
+
     cr = list()
     if coh_type == 'E':
         ws1, ws2 = int(wsize[0] / 2.), int(wsize[1] / 2.)
         wstr = '(' + str(wsize[0]) + ',' + str(wsize[1]) + ')'
         print('Computing Coherence mat for ' + wstr + '...')
-        tmat = calc_ensemble_cohmat(s1, s2, ifg, apply_masks=apply_masks, outfile=outfile, img_dict=img_dict, wsize=(ws1, ws2),
-                                    verbose=verbose, wf=wf)
+        tmat = calc_ensemble_cohmat(s1, s2, ifg, apply_masks=apply_masks, outfile=outfile, img_dict=img_dict,
+                                    wsize=(ws1, ws2), verbose=verbose, wf=wf)
         if validate:
             cr = check_values(tmat, img_dict['LIA'], geocoords=(700089.771, 3581794.5556),
                               is_complex=True)
@@ -388,7 +583,18 @@ def get_coherence(s1, s2, ifg, wsize, img_dict, apply_masks, coh_type, verbose, 
     return tmat, wstr
 
 
-def compute_vertical_wavenumber(lia_file, wsize, outfile, scale_factor, is_single_pass=True):
+def compute_vertical_wavenumber(lia_file, wsize, outfile, scale_factor, is_single_pass=True, verbose=True):
+    """
+    Calculate vertical wavenumber
+    :param lia_file: Local incidence angle GDAL reference
+    :param wsize: Ensemble window size (should be half of desired window size)
+    :param outfile: Output file path
+    :param scale_factor: Vertical wavenumber scale factor (real valued, shoud be chosen according to the study area)
+    :param is_single_pass: Set true for single-pass acquisitions
+    :param verbose: Set true for detailed logs
+    :return: Vertical wavenumber array
+    """
+
     lia = get_image_array(lia_file)
     del_theta = np.abs(MEAN_INC_TDX - MEAN_INC_TSX)
     m = 4
@@ -396,11 +602,17 @@ def compute_vertical_wavenumber(lia_file, wsize, outfile, scale_factor, is_singl
         m = 2
     kz = m * np.pi * np.deg2rad(del_theta) / (WAVELENGTH * np.sin(np.deg2rad(lia)))
     kz = get_ensemble_avg(kz, wsize=wsize, image_file=lia_file, scale_factor=scale_factor, outfile=outfile,
-                          wf=True)
+                          wf=True, verbose=verbose)
     return kz
 
 
 def senstivity_analysis(image_dict, coh_type='L'):
+    """
+    Main caller function for sensitivity analysis
+    :param image_dict: Image dictionary containing GDAL references
+    :param coh_type: Set 'L' for look based coherence and 'E' for ensemble window based
+    :return: None
+    """
     pol_vec = calc_pol_vec_dict()
     print('Calculating s1, s2 and ifg ...')
     s1_vol, s2_vol, ifg_vol = calc_interferogram(image_dict, pol_vec['HV'], apply_masks=False,
@@ -412,15 +624,15 @@ def senstivity_analysis(image_dict, coh_type='L'):
     print('Creating senstivity parameters ...')
     # wrange = range(3, 66, 2)
     # ewindows = [(i, j) for i, j in zip(wrange, wrange)]
-    # epsilon = np.round(np.linspace(0, 1, 11), 1)
-    # epsilon = np.round(np.linspace(0.6, 1, 6), 1)
+    # eta_values = np.round(np.linspace(0, 1, 11), 1)
+    # eta_values = np.round(np.linspace(0.6, 1, 6), 1)
     # clooks = range(2, 21)
     # coherence_threshold = np.round(np.linspace(0.10, 0.90, 17), 2)
     # cwindows = [(5, 5)]
     ewindows = [(49, 49)]
     clooks = [3]
     cwindows = {'E': ewindows.copy(), 'L': clooks}
-    epsilon = [0.]
+    eta_values = [0.]
     coherence_threshold = [0.6]
     cval = False
     scale_factor = 10
@@ -437,18 +649,19 @@ def senstivity_analysis(image_dict, coh_type='L'):
         # tmat_vol = np.load('Out/Coherence_Vol.npy')
         # tmat_surf = np.load('Out/Coherence_Surf.npy')
         print('Computing ground phase ...')
-        ground_phase = get_ground_phase(tmat_vol, tmat_surf, (10, 10), img_dict=image_dict, apply_masks=False)
-        # ground_phase = np.load('Out/Ground_Med.npy')
+        ground_phase = get_ground_phase(tmat_vol, tmat_surf, (10, 10), img_dict=image_dict, apply_masks=False,
+                                         verbose=False)
+        ground_phase = np.load('Out/Ground_Med.npy')
         print('Computing vertical wavenumber ...')
         kz = compute_vertical_wavenumber(lia_file, scale_factor=scale_factor, outfile='Wavenumber',
-                                         wsize=(10, 10))
+                                         wsize=(10, 10), verbose=False)
         # kz = np.load('Out/Wavenumber.npy')
         wstr1 = str(wsize1)
-        for eps in epsilon:
+        for eta in eta_values:
             for ct in coherence_threshold:
                 print('Computing snow depth ...')
                 # topo = get_image_array(image_dict['TOPO']) % (2 * np.pi)
-                snow_depth = calc_snow_depth_hybrid(tmat_vol, ground_phase, kz, lia_file=lia_file, eps=eps,
+                snow_depth = calc_snow_depth_hybrid(tmat_vol, ground_phase, kz, img_file=lia_file, eta=eta,
                                                     coherence_threshold=ct, wf=True, verbose=False)
                 # snow_depth = np.load('Out/Snow_Depth.npy')
                 for wsize2 in ewindows:
@@ -460,7 +673,7 @@ def senstivity_analysis(image_dict, coh_type='L'):
                     vr = check_values(avg_sd, image_dict['LIA'], (700089.771, 3581794.5556))  # Dhundi
                     vr_str = ' '.join([str(r) for r in vr])
                     wstr2 = '(' + str(wsize2[0]) + ',' + str(wsize2[1]) + ')'
-                    final_str = wstr1 + ' ' + str(eps) + ' ' + str(ct) + ' ' + wstr2 + ' ' + vr_str + '\n'
+                    final_str = wstr1 + ' ' + str(eta) + ' ' + str(ct) + ' ' + wstr2 + ' ' + vr_str + '\n'
                     print(final_str)
                     outfile.write(final_str)
                     # vr = validate_dry_snow('Avg_SD.tif', (705849.1335, 3577999.4174)) # Kothi
