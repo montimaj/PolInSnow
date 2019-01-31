@@ -137,7 +137,7 @@ def write_file(arr, src_file, outfile='test', no_data_value=NO_DATA_VALUE, is_co
     out.FlushCache()
 
 
-def calc_interferogram(image_dict, pol_vec, outfile, apply_masks=True, verbose=True, wf=True):
+def calc_interferogram(image_dict, pol_vec, outfile, apply_masks=True, verbose=True, wf=True, load_files=False):
     """
     Calculate Pol-InSAR interferogram
     :param image_dict: Image dictionary containing GDAL references
@@ -146,58 +146,63 @@ def calc_interferogram(image_dict, pol_vec, outfile, apply_masks=True, verbose=T
     :param apply_masks: Set true for applying layover and shadow masks
     :param verbose: Set true for detailed logs
     :param wf: Set true for writing intermediate results
+    :param load_files: Set true to load existing numpy binaries and skip computation
     :return: Tuple containing master array, slave array and interferogram
     """
 
-    hh_file = image_dict['HH']
-    hv_file = image_dict['HV']
-    vh_file = image_dict['VH']
-    vv_file = image_dict['VV']
-    fe_file = image_dict['FE']
-    layover_file = image_dict['LAYOVER']
-    forest_file = image_dict['FOREST']
+    if not load_files:
+        hh_file = image_dict['HH']
+        hv_file = image_dict['HV']
+        vh_file = image_dict['VH']
+        vv_file = image_dict['VV']
+        fe_file = image_dict['FE']
+        layover_file = image_dict['LAYOVER']
+        forest_file = image_dict['FOREST']
 
-    hh_mst, hh_slv = get_complex_image(hh_file)
-    hv_mst, hv_slv = get_complex_image(hv_file)
-    vh_mst, vh_slv = get_complex_image(vh_file)
-    vv_mst, vv_slv = get_complex_image(vv_file)
-    hv_mst, hv_slv = (hv_mst + vh_mst) / 2., (hv_slv + vh_slv) / 2.
+        hh_mst, hh_slv = get_complex_image(hh_file)
+        hv_mst, hv_slv = get_complex_image(hv_file)
+        vh_mst, vh_slv = get_complex_image(vh_file)
+        vv_mst, vv_slv = get_complex_image(vv_file)
+        hv_mst, hv_slv = (hv_mst + vh_mst) / 2., (hv_slv + vh_slv) / 2.
 
-    fe = get_image_array(fe_file)
+        fe = get_image_array(fe_file)
 
-    ifg = np.full_like(hv_mst, np.nan, dtype=np.complex)
-    s1 = np.full_like(hv_mst, np.nan, dtype=np.complex)
-    s2 = np.full_like(hv_mst, np.nan, dtype=np.complex)
+        ifg = np.full_like(hv_mst, np.nan, dtype=np.complex)
+        s1 = np.full_like(hv_mst, np.nan, dtype=np.complex)
+        s2 = np.full_like(hv_mst, np.nan, dtype=np.complex)
 
-    for itr in np.ndenumerate(ifg):
-        idx = itr[0]
-        hh_1 = hh_mst[idx]
-        vv_1 = vv_mst[idx]
-        hh_2 = hh_slv[idx]
-        vv_2 = vv_slv[idx]
-        hv_1 = hv_mst[idx]
-        hv_2 = hv_slv[idx]
+        for itr in np.ndenumerate(ifg):
+            idx = itr[0]
+            hh_1 = hh_mst[idx]
+            vv_1 = vv_mst[idx]
+            hh_2 = hh_slv[idx]
+            vv_2 = vv_slv[idx]
+            hv_1 = hv_mst[idx]
+            hv_2 = hv_slv[idx]
 
-        nan_check = np.isnan(np.array([[hv_1, hv_2]]))
-        if len(nan_check[nan_check]) == 0:
-            k1 = (2 ** -0.5) * np.array([[hh_1 + vv_1, hh_1 - vv_1, 2 * hv_1]])
-            k2 = (2 ** -0.5) * np.array([[hh_2 + vv_2, hh_2 - vv_2, 2 * hv_2]])
-            s1[idx] = np.matmul(pol_vec, k1.T)[0][0]
-            s2[idx] = np.matmul(pol_vec, k2.T)[0][0]
-            ifg[idx] = s1[idx] * np.conj(s2[idx]) * np.exp(fe[idx] * -1j)
-            if verbose:
-                print('At ', idx, ' IFG = ', ifg[idx])
-    if apply_masks:
-        s1 = set_nan_img(s1, layover_file, forest_file)
-        s2 = set_nan_img(s2, layover_file, forest_file)
-        ifg = set_nan_img(ifg, layover_file, forest_file)
-    if wf:
-        np.save('Out/S1_' + outfile, s1)
-        np.save('Out/S2_' + outfile, s2)
-        np.save('Out/Ifg_' + outfile, ifg)
-        write_file(ifg.copy(), hv_file, 'Out/Ifg_Polinsar_' + outfile)
-        # write_file(s1, hh_file, 'Out/S1_' + outfile)
-        # write_file(s2, hh_file, 'Out/S2_' + outfile)
+            nan_check = np.isnan(np.array([[hv_1, hv_2]]))
+            if len(nan_check[nan_check]) == 0:
+                k1 = (2 ** -0.5) * np.array([[hh_1 + vv_1, hh_1 - vv_1, 2 * hv_1]])
+                k2 = (2 ** -0.5) * np.array([[hh_2 + vv_2, hh_2 - vv_2, 2 * hv_2]])
+                s1[idx] = np.matmul(pol_vec, k1.T)[0][0]
+                s2[idx] = np.matmul(pol_vec, k2.T)[0][0]
+                ifg[idx] = s1[idx] * np.conj(s2[idx]) * np.exp(fe[idx] * -1j)
+                if verbose:
+                    print('At ', idx, ' IFG = ', ifg[idx])
+        if apply_masks:
+            s1 = set_nan_img(s1, layover_file, forest_file)
+            s2 = set_nan_img(s2, layover_file, forest_file)
+            ifg = set_nan_img(ifg, layover_file, forest_file)
+        if wf:
+            np.save('Out/S1_' + outfile, s1)
+            np.save('Out/S2_' + outfile, s2)
+            np.save('Out/Ifg_' + outfile, ifg)
+            write_file(ifg.copy(), hv_file, 'Out/Ifg_Polinsar_' + outfile)
+            # write_file(s1, hh_file, 'Out/S1_' + outfile)
+            # write_file(s2, hh_file, 'Out/S2_' + outfile)
+    else:
+        s1, s2, ifg = np.load('Out/S1_' + outfile + '.npy'), np.load('Out/S2_' + outfile + '.npy'), \
+                      np.load('Out/Ifg_' + outfile + '.npy')
     return s1, s2, ifg
 
 
@@ -432,7 +437,7 @@ def get_ensemble_avg(image_arr, wsize, image_file, outfile, stat='mean', scale_f
     return emat
 
 
-def get_ground_phase(tmat_vol, tmat_surf, wsize, img_dict, apply_masks, verbose=True, wf=True):
+def get_ground_phase(tmat_vol, tmat_surf, wsize, img_dict, apply_masks, verbose=True, wf=True, load_file=False):
     """
     Calculate ground phase for HH-VV polarisation vector
     :param tmat_vol: Volume coherence array
@@ -442,30 +447,33 @@ def get_ground_phase(tmat_vol, tmat_surf, wsize, img_dict, apply_masks, verbose=
     :param apply_masks: Set true for applying layover and forest masks
     :param verbose: Set true for detailed logs
     :param wf: Set true to write intermediate files
+    :param load_file: Set true to load existing numpy binary and skip computation
     :return: Median filtered ground phase
     """
 
-    a = np.abs(tmat_surf) ** 2 - 1
-    b = 2 * np.real((tmat_vol - tmat_surf) * np.conj(tmat_surf))
-    c = np.abs(tmat_vol - tmat_surf) ** 2
-    lws = (-b - np.sqrt(b ** 2 - 4 * a * c)) / (2 * a)
-    lws[lws > 1] = 1
-    lws[lws < 0] = 0
-    t = tmat_vol - tmat_surf * (1 - lws)
-    ground_phase = np.arctan2(t.imag, t.real) % (2 * np.pi)
-    lia_arr = get_image_array(img_dict['LIA'])
-    if apply_masks:
-        layover_arr = get_image_array(img_dict['LAYOVER'])
-        forest_arr = get_image_array(img_dict['FOREST'])
-        ground_phase = nanfix_tmat_arr(ground_phase, lia_arr, layover_arr, forest_arr)
-    else:
-        ground_phase = nanfix_tmat_arr(ground_phase, lia_arr, apply_masks=False)
-    return get_ensemble_avg(ground_phase, outfile='Ground_Med', wsize=wsize, image_file=img_dict['LIA'], stat='med',
-                            verbose=verbose, wf=wf)
+    if not load_file:
+        a = np.abs(tmat_surf) ** 2 - 1
+        b = 2 * np.real((tmat_vol - tmat_surf) * np.conj(tmat_surf))
+        c = np.abs(tmat_vol - tmat_surf) ** 2
+        lws = (-b - np.sqrt(b ** 2 - 4 * a * c)) / (2 * a)
+        lws[lws > 1] = 1
+        lws[lws < 0] = 0
+        t = tmat_vol - tmat_surf * (1 - lws)
+        ground_phase = np.arctan2(t.imag, t.real) % (2 * np.pi)
+        lia_arr = get_image_array(img_dict['LIA'])
+        if apply_masks:
+            layover_arr = get_image_array(img_dict['LAYOVER'])
+            forest_arr = get_image_array(img_dict['FOREST'])
+            ground_phase = nanfix_tmat_arr(ground_phase, lia_arr, layover_arr, forest_arr)
+        else:
+            ground_phase = nanfix_tmat_arr(ground_phase, lia_arr, apply_masks=False)
+        return get_ensemble_avg(ground_phase, outfile='Ground_Med', wsize=wsize, image_file=img_dict['LIA'], stat='med',
+                                verbose=verbose, wf=wf)
+    return np.load('Out/Ground_Med.npy')
 
 
 def calc_snow_depth_hybrid(tmat_vol, ground_phase, kz, img_file, eta=0.4, coherence_threshold=0.5, verbose=True,
-                           wf=False):
+                           wf=False, load_file=False):
     """
     Calculate snow depth using Pol-InSAR based hybrid height inversion model
     :param tmat_vol: Volume coherence array
@@ -476,39 +484,42 @@ def calc_snow_depth_hybrid(tmat_vol, ground_phase, kz, img_file, eta=0.4, cohere
     :param coherence_threshold: Coherence threshold (0<=coherence_threshold<=1)
     :param verbose: Set true for detailed logs
     :param wf: Set true to save intermediate results
+    :param load_file: Set true to load existing numpy binary and skip computation
     :return: Snow depth array
     """
 
-    snow_depth = np.full_like(tmat_vol, np.nan, dtype=np.float32)
-    kv = snow_depth.copy()
-    for itr in np.ndenumerate(snow_depth):
-        idx = itr[0]
-        tval_vol = tmat_vol[idx]
-        gval = ground_phase[idx]
-        kz_val = kz[idx]
-        if not np.isnan(tval_vol):
-            abs_tval_vol = np.abs(tval_vol)
-            snow_depth[idx] = 0
-            if abs_tval_vol >= coherence_threshold:
-                t1 = np.arctan2(tval_vol.imag, tval_vol.real) % (2 * np.pi)
-                k1 = t1 - gval
-                sinc_inv = scp.newton(mysinc, args=(abs_tval_vol,), x0=1)
-                k2 = 0
-                if not np.isnan(sinc_inv):
-                    k2 = 2 * eta * sinc_inv
-                kv[idx] = k1 + k2
-                snow_depth[idx] = kv[idx] / kz_val
-                if snow_depth[idx] < 0:
-                    snow_depth[idx] = 0
-                if verbose:
-                    print('At ', idx, '(kz, t1, t2, k1, k2, kv)= ', kz_val, t1, gval, k1, k2, kv[idx],
-                          'Snow depth= ', snow_depth[idx])
-    if wf:
-        np.save('Out/KV', kv)
-        np.save('Out/Snow_Depth', snow_depth)
-        np.save('Out/Wavenumber', kz)
-        write_file(snow_depth.copy(), img_file, 'Snow_Depth_Polinsar', is_complex=False)
-    return snow_depth
+    if not load_file:
+        snow_depth = np.full_like(tmat_vol, np.nan, dtype=np.float32)
+        kv = snow_depth.copy()
+        for itr in np.ndenumerate(snow_depth):
+            idx = itr[0]
+            tval_vol = tmat_vol[idx]
+            gval = ground_phase[idx]
+            kz_val = kz[idx]
+            if not np.isnan(tval_vol):
+                abs_tval_vol = np.abs(tval_vol)
+                snow_depth[idx] = 0
+                if abs_tval_vol >= coherence_threshold:
+                    t1 = np.arctan2(tval_vol.imag, tval_vol.real) % (2 * np.pi)
+                    k1 = t1 - gval
+                    sinc_inv = scp.newton(mysinc, args=(abs_tval_vol,), x0=1)
+                    k2 = 0
+                    if not np.isnan(sinc_inv):
+                        k2 = 2 * eta * sinc_inv
+                    kv[idx] = k1 + k2
+                    snow_depth[idx] = kv[idx] / kz_val
+                    if snow_depth[idx] < 0:
+                        snow_depth[idx] = 0
+                    if verbose:
+                        print('At ', idx, '(kz, t1, t2, k1, k2, kv)= ', kz_val, t1, gval, k1, k2, kv[idx],
+                              'Snow depth= ', snow_depth[idx])
+        if wf:
+            np.save('Out/KV', kv)
+            np.save('Out/Snow_Depth', snow_depth)
+            np.save('Out/Wavenumber', kz)
+            write_file(snow_depth.copy(), img_file, 'Snow_Depth_Polinsar', is_complex=False)
+        return snow_depth
+    return np.load('Out/Snow_Depth.npy')
 
 
 def retrieve_pixel_coords(geo_coord, data_source):
@@ -546,7 +557,8 @@ def check_values(img_arr, img_file, geocoords, nsize=(1, 1), is_complex=False):
     return np.nanmin(img_loc), np.nanmax(img_loc), np.nanmean(img_loc), np.nanstd(img_loc)
 
 
-def get_coherence(s1, s2, ifg, wsize, img_dict, apply_masks, coh_type, verbose, wf, outfile, validate=False):
+def get_coherence(s1, s2, ifg, wsize, img_dict, apply_masks, coh_type, verbose, wf, outfile, validate=False,
+                  load_file=False):
     """
     Coherency matrix caller function
     :param s1: Master image array
@@ -560,6 +572,7 @@ def get_coherence(s1, s2, ifg, wsize, img_dict, apply_masks, coh_type, verbose, 
     :param wf: Set true to save intermediate results
     :param outfile: Output file path
     :param validate: Validate results if set to true
+    :param load_file: Set true to load existing numpy binary and skip computation
     :return: Complex coherency matrix and window size string as tuple
     """
 
@@ -568,16 +581,22 @@ def get_coherence(s1, s2, ifg, wsize, img_dict, apply_masks, coh_type, verbose, 
         ws1, ws2 = int(wsize[0] / 2.), int(wsize[1] / 2.)
         wstr = '(' + str(wsize[0]) + ',' + str(wsize[1]) + ')'
         print('Computing Coherence mat for ' + wstr + '...')
-        tmat = calc_ensemble_cohmat(s1, s2, ifg, apply_masks=apply_masks, outfile=outfile, img_dict=img_dict,
-                                    wsize=(ws1, ws2), verbose=verbose, wf=wf)
+        if not load_file:
+            tmat = calc_ensemble_cohmat(s1, s2, ifg, apply_masks=apply_masks, outfile=outfile, img_dict=img_dict,
+                                        wsize=(ws1, ws2), verbose=verbose, wf=wf)
+        else:
+            tmat = np.load('Out/Coherence_Ensemble' + outfile + '.npy')
         if validate:
             cr = check_values(tmat, img_dict['LIA'], geocoords=(700089.771, 3581794.5556),
                               is_complex=True)
     else:
         wstr = str(wsize)
         print('Computing Coherence mat for ' + wstr + '...')
-        tmat = calc_coherence_mat(s1, s2, ifg, outfile=outfile, apply_masks=apply_masks, img_dict=img_dict,
-                                  num_looks=wsize, verbose=verbose, wf=wf)
+        if not load_file:
+            tmat = calc_coherence_mat(s1, s2, ifg, outfile=outfile, apply_masks=apply_masks, img_dict=img_dict,
+                                      num_looks=wsize, verbose=verbose, wf=wf)
+        else:
+            tmat = np.load('Out/Coherence_' + outfile + '.npy')
         if validate:
             cr = check_values(tmat, img_dict['LIA'], geocoords=(700089.771, 3581794.5556), is_complex=True)
     if validate:
@@ -586,7 +605,8 @@ def get_coherence(s1, s2, ifg, wsize, img_dict, apply_masks, coh_type, verbose, 
     return tmat, wstr
 
 
-def compute_vertical_wavenumber(lia_file, wsize, outfile, scale_factor, is_single_pass=True, verbose=True, wf=True):
+def compute_vertical_wavenumber(lia_file, wsize, outfile, scale_factor, is_single_pass=True, verbose=True, wf=True,
+                                load_file=False):
     """
     Calculate vertical wavenumber
     :param lia_file: Local incidence angle GDAL reference
@@ -596,17 +616,21 @@ def compute_vertical_wavenumber(lia_file, wsize, outfile, scale_factor, is_singl
     :param is_single_pass: Set true for single-pass acquisitions
     :param verbose: Set true for detailed logs
     :param wf: Set true to write intermediate files
+    :param load_file: Set true to load existing numpy binary and skip computation
     :return: Vertical wavenumber array
-    """
 
-    lia = get_image_array(lia_file)
-    del_theta = np.abs(MEAN_INC_TDX - MEAN_INC_TSX)
-    m = 4
-    if is_single_pass:
-        m = 2
-    kz = m * np.pi * np.deg2rad(del_theta) / (WAVELENGTH * np.sin(np.deg2rad(lia)))
-    kz = get_ensemble_avg(kz, wsize=wsize, image_file=lia_file, scale_factor=scale_factor, outfile=outfile,
-                          wf=wf, verbose=verbose)
+    """
+    if not load_file:
+        lia = get_image_array(lia_file)
+        del_theta = np.abs(MEAN_INC_TDX - MEAN_INC_TSX)
+        m = 4
+        if is_single_pass:
+            m = 2
+        kz = m * np.pi * np.deg2rad(del_theta) / (WAVELENGTH * np.sin(np.deg2rad(lia)))
+        kz = get_ensemble_avg(kz, wsize=wsize, image_file=lia_file, scale_factor=scale_factor, outfile=outfile,
+                              wf=wf, verbose=verbose)
+    else:
+        kz = np.load('Out/Wavenumber.npy')
     return kz
 
 
@@ -619,24 +643,21 @@ def senstivity_analysis(image_dict, coh_type='L', apply_masks=True):
     :return: None
     """
     pol_vec = calc_pol_vec_dict()
+    lf = True
     print('Calculating s1, s2 and ifg ...')
     s1_vol, s2_vol, ifg_vol = calc_interferogram(image_dict, pol_vec['HV'], apply_masks=apply_masks,
-                                                 outfile='Vol', verbose=False)
+                                                 outfile='Vol', verbose=False, load_files=lf)
     s1_surf, s2_surf, ifg_surf = calc_interferogram(image_dict, pol_vec['HH-VV'], apply_masks=apply_masks,
-                                                    outfile='Surf', verbose=False)
-    # s1_vol, s2_vol, ifg_vol = np.load('Out/S1_Vol.npy'), np.load('Out/S2_Vol.npy'), np.load('Out/Ifg_Vol.npy')
-    # s1_surf, s2_surf, ifg_surf = np.load('Out/S1_Surf.npy'), np.load('Out/S2_Surf.npy'), np.load('Out/Ifg_Surf.npy')
+                                                    outfile='Surf', verbose=False, load_files=lf)
     print('Creating senstivity parameters ...')
-    wrange = range(3, 66, 2)
-    ewindows = [(i, j) for i, j in zip(wrange, wrange)]
-    # eta_values = np.round(np.linspace(0, 1, 11), 1)
-    # eta_values = np.round(np.linspace(0.6, 1, 6), 1)
+    # wrange = range(3, 66, 2)
+    # ewindows = [(i, j) for i, j in zip(wrange, wrange)]
     # clooks = range(2, 21)
     # coherence_threshold = np.round(np.linspace(0.10, 0.90, 17), 2)
-    # cwindows = [(5, 5)]
-    # ewindows = [(49, 49)]
+    ewindows = [(49, 49)]
     clooks = [3]
     cwindows = {'E': ewindows.copy(), 'L': clooks}
+    # eta_values = np.round(np.linspace(0.01, 0.09, 9), 2)
     eta_values = [0.]
     coherence_threshold = [0.6]
     cval = False
@@ -644,39 +665,33 @@ def senstivity_analysis(image_dict, coh_type='L', apply_masks=True):
     scale_factor = 5
     lia_file = image_dict['LIA']
 
-    outfile = open('sensitivity_new_snow.csv', 'a+')
+    outfile = open('sensitivity_new_snow3.csv', 'a+')
     outfile.write('CWindow Epsilon CThreshold SWindow Min(cm) Max(cm) Mean(cm) SD(cm)\n')
     print('Computation started...')
     for wsize1 in cwindows[coh_type]:
         tmat_vol, wstr1 = get_coherence(s1_vol, s2_vol, ifg_vol, outfile='Vol', wsize=wsize1, coh_type=coh_type,
                                         apply_masks=apply_masks, img_dict=image_dict, verbose=False, wf=wf,
-                                        validate=cval)
+                                        validate=cval, load_file=lf)
         tmat_surf, wstr1 = get_coherence(s1_surf, s2_surf, ifg_surf, outfile='Surf', wsize=wsize1, coh_type=coh_type,
                                          apply_masks=apply_masks, img_dict=image_dict, verbose=False, wf=wf,
-                                         validate=cval)
-        # tmat_vol = np.load('Out/Coherence_Vol.npy')
-        # tmat_surf = np.load('Out/Coherence_Surf.npy')
+                                         validate=cval, load_file=lf)
         print('Computing ground phase ...')
         ground_phase = get_ground_phase(tmat_vol, tmat_surf, (10, 10), img_dict=image_dict, apply_masks=apply_masks,
-                                        verbose=False, wf=wf)
-        # ground_phase = np.load('Out/Ground_Med.npy')
+                                        verbose=False, wf=wf, load_file=lf)
         print('Computing vertical wavenumber ...')
         kz = compute_vertical_wavenumber(lia_file, scale_factor=scale_factor, outfile='Wavenumber',
-                                         wsize=(10, 10), verbose=False, wf=wf)
-        # kz = np.load('Out/Wavenumber.npy')
+                                         wsize=(10, 10), verbose=False, wf=wf, load_file=lf)
         wstr1 = str(wsize1)
         for eta in eta_values:
             for ct in coherence_threshold:
                 print('Computing snow depth ...')
                 snow_depth = calc_snow_depth_hybrid(tmat_vol, ground_phase, kz, img_file=lia_file, eta=eta,
-                                                    coherence_threshold=ct, wf=wf, verbose=False)
-                snow_depth = np.load('Out/Snow_Depth.npy')
+                                                    coherence_threshold=ct, wf=wf, verbose=False, load_file=False)
                 for wsize2 in ewindows:
                     ws1, ws2 = int(wsize2[0] / 2.), int(wsize2[1] / 2.)
                     print('Ensemble averaging snow depth ...')
                     avg_sd = get_ensemble_avg(snow_depth, (ws1, ws2), image_file=lia_file, outfile='Avg_SD',
                                               verbose=False, wf=wf)
-                    # avg_sd = np.load('Out/Avg_SD_60.npy')
                     vr = check_values(avg_sd, lia_file, (700089.771, 3581794.5556))  # Dhundi
                     vr_str = ' '.join([str(r) for r in vr])
                     wstr2 = '(' + str(wsize2[0]) + ',' + str(wsize2[1]) + ')'
