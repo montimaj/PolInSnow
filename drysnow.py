@@ -7,13 +7,12 @@ import affine
 
 MEAN_INC_TDX = (38.07691192626953 + 39.37236785888672) / 2.
 MEAN_INC_TSX = (38.104190826416016 + 39.37824630737305) / 2.
-WAVELENGTH = 3.10880853
-HOA = 6318
-BPERP = 9634
-R = 98420.04252609884
+WAVELENGTH = 3.10880853  # cm
+HOA = 6318  # cm
+BPERP = 9634 # cm
 NO_DATA_VALUE = -32768
-SNOW_DENSITY = 0.394
-DHUNDI_COORDS = (700089.771, 3581794.5556)
+STANDING_SNOW_DENSITY = 0.394  # g/cm^3
+DHUNDI_COORDS = (700089.771, 3581794.5556)  # UTM 43N
 
 
 def read_images(path, imgformat='*.tif'):
@@ -356,7 +355,7 @@ def calc_ensemble_cohmat(s1, s2, ifg, img_dict, outfile, wsize=(5, 5), apply_mas
                           verbose=verbose, wf=False)
 
     tmat = num / (np.sqrt(d1 * d2))
-    tmat[tmat > 1] = 1 + 0j
+    tmat[np.abs(tmat) > 1] = 1 + 0j
 
     lia_arr = get_image_array(lia_file)
     if apply_masks:
@@ -478,6 +477,7 @@ def mysinc(x, c):
     :param c: Constant
     :return: SINC(x) - c
     """
+
     return np.sinc(x) - c
 
 
@@ -494,7 +494,7 @@ def calc_sinc_inv(val):
         if not np.isnan(sinc_inv):
             return sinc_inv
     except RuntimeError:
-        print('RuntimeError while finding root')
+        print('Root error ', val)
     return sinc_inv_approx
 
 
@@ -688,6 +688,7 @@ def senstivity_analysis(image_dict, coh_type='L', apply_masks=True):
     :param apply_masks: Set true for applying layover and forest masks
     :return: None
     """
+
     pol_vec = calc_pol_vec_dict()
     lf = True
     print('Calculating s1, s2 and ifg ...')
@@ -696,19 +697,19 @@ def senstivity_analysis(image_dict, coh_type='L', apply_masks=True):
     s1_surf, s2_surf, ifg_surf = calc_interferogram(image_dict, pol_vec['HH-VV'], apply_masks=apply_masks,
                                                     outfile='Surf', verbose=False, load_files=lf)
     print('Creating senstivity parameters ...')
-    wrange = range(3, 66, 2)
-    ewindows = [(i, j) for i, j in zip(wrange, wrange)]
+    # wrange = range(3, 66, 2)
+    # ewindows = [(i, j) for i, j in zip(wrange, wrange)]
     # clooks = range(2, 21)
     # coherence_threshold = np.round(np.linspace(0.10, 0.90, 17), 2)
-    # ewindows = [(31, 31), (41, 41), (49, 49), (61, 61)]
+    ewindows = [(45, 45)]
     cw = [(5, 5)]
     clooks = [3]
     cwindows = {'E': cw.copy(), 'L': clooks}
     # eta_values = np.round(np.linspace(0.01, 0.09, 9), 2)
-    eta_values = [0.]
+    eta_values = [0.005]
     coherence_threshold = [0.45]
     cval = True
-    wf = False
+    wf = True
     scale_factor = 1
     lia_file = image_dict['LIA']
 
@@ -733,13 +734,13 @@ def senstivity_analysis(image_dict, coh_type='L', apply_masks=True):
             for ct in coherence_threshold:
                 print('Computing snow depth ...')
                 snow_depth = calc_snow_depth_hybrid(tmat_vol, ground_phase, kz, img_file=lia_file, eta=eta,
-                                                    coherence_threshold=ct, wf=wf, verbose=False, load_file=lf)
+                                                    coherence_threshold=ct, wf=wf, verbose=False, load_file=False)
                 for wsize2 in ewindows:
                     ws1, ws2 = int(wsize2[0] / 2.), int(wsize2[1] / 2.)
                     print('Ensemble averaging snow depth ...')
                     avg_sd = get_ensemble_avg(snow_depth, (ws1, ws2), image_file=lia_file, outfile='Avg_SD',
                                               verbose=False, wf=wf)
-                    swe = get_total_swe(avg_sd, density=SNOW_DENSITY, img_file=lia_file)
+                    swe = get_total_swe(avg_sd, density=STANDING_SNOW_DENSITY, img_file=lia_file)
                     vr = check_values(avg_sd, lia_file, DHUNDI_COORDS)
                     vr_str = ' '.join([str(r) for r in vr])
                     wstr2 = '(' + str(wsize2[0]) + ',' + str(wsize2[1]) + ')'
