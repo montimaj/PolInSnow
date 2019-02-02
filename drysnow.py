@@ -697,20 +697,20 @@ def senstivity_analysis(image_dict, coh_type='L', apply_masks=True):
     s1_surf, s2_surf, ifg_surf = calc_interferogram(image_dict, pol_vec['HH-VV'], apply_masks=apply_masks,
                                                     outfile='Surf', verbose=False, load_files=lf)
     print('Creating senstivity parameters ...')
-    # wrange = range(3, 66, 2)
-    # ewindows = [(i, j) for i, j in zip(wrange, wrange)]
+    wrange = range(3, 66, 2)
+    ewindows = [(i, j) for i, j in zip(wrange, wrange)]
     # clooks = range(2, 21)
     # coherence_threshold = np.round(np.linspace(0.10, 0.90, 17), 2)
-    ewindows = [(45, 45)]
+    # ewindows = [(49, 49)]
     cw = [(5, 5)]
     clooks = [3]
     cwindows = {'E': cw.copy(), 'L': clooks}
     # eta_values = np.round(np.linspace(0.01, 0.09, 9), 2)
     eta_values = [0.005]
-    coherence_threshold = [0.45]
+    coherence_threshold = [0.6]
     cval = True
-    wf = True
-    scale_factor = 1
+    wf = False
+    scale_factor = 5
     lia_file = image_dict['LIA']
 
     outfile = open('SSD_SWE.csv', 'a+')
@@ -734,7 +734,7 @@ def senstivity_analysis(image_dict, coh_type='L', apply_masks=True):
             for ct in coherence_threshold:
                 print('Computing snow depth ...')
                 snow_depth = calc_snow_depth_hybrid(tmat_vol, ground_phase, kz, img_file=lia_file, eta=eta,
-                                                    coherence_threshold=ct, wf=wf, verbose=False, load_file=False)
+                                                    coherence_threshold=ct, wf=wf, verbose=False, load_file=lf)
                 for wsize2 in ewindows:
                     ws1, ws2 = int(wsize2[0] / 2.), int(wsize2[1] / 2.)
                     print('Ensemble averaging snow depth ...')
@@ -755,4 +755,4 @@ def senstivity_analysis(image_dict, coh_type='L', apply_masks=True):
 
 image_dict = read_images('../THESIS/Thesis_Files/Polinsar/Clipped_Tifs')
 print('Images loaded...\n')
-senstivity_analysis(image_dict, coh_type='E')
+senstivity_analysis(image_dict, coh_type='L')
