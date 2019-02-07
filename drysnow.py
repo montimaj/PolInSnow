@@ -11,7 +11,7 @@ WAVELENGTH = 3.10880853  # cm
 HOA = 6318  # cm
 BPERP = 9634 # cm
 NO_DATA_VALUE = -32768
-STANDING_SNOW_DENSITY = 0.394  # g/cm^3
+STANDING_SNOW_DENSITY = 0.315  # g/cm^3
 DHUNDI_COORDS = (700089.771, 3581794.5556)  # UTM 43N
 
 
@@ -487,7 +487,8 @@ def calc_sinc_inv(val):
     :param val: Input value
     :return: sinc inverse
     """
-
+    if val == 1:
+        return 0
     sinc_inv_approx = np.pi - 2 * np.arcsin(val ** 0.8)
     try:
         sinc_inv = scp.newton(mysinc, args=(val,), x0=1)
@@ -697,23 +698,23 @@ def senstivity_analysis(image_dict, coh_type='L', apply_masks=True):
     s1_surf, s2_surf, ifg_surf = calc_interferogram(image_dict, pol_vec['HH-VV'], apply_masks=apply_masks,
                                                     outfile='Surf', verbose=False, load_files=lf)
     print('Creating senstivity parameters ...')
-    wrange = range(3, 66, 2)
-    ewindows = [(i, j) for i, j in zip(wrange, wrange)]
+    # wrange = range(3, 66, 2)
+    # ewindows = [(i, j) for i, j in zip(wrange, wrange)]
     # clooks = range(2, 21)
     # coherence_threshold = np.round(np.linspace(0.10, 0.90, 17), 2)
-    # ewindows = [(49, 49)]
-    cw = [(5, 5)]
+    ewindows = [(57, 57)]
+    cw = [(3, 3)]
     clooks = [3]
     cwindows = {'E': cw.copy(), 'L': clooks}
     # eta_values = np.round(np.linspace(0.01, 0.09, 9), 2)
-    eta_values = [0.005]
+    eta_values = [0.65]
     coherence_threshold = [0.6]
     cval = True
     wf = False
     scale_factor = 5
     lia_file = image_dict['LIA']
 
-    outfile = open('SSD_SWE.csv', 'a+')
+    outfile = open('Sensitivity5.csv', 'a+')
     outfile.write('CWindow Epsilon CThreshold SWindow Mean_SSD(cm) SD_SSD(cm) Mean_SWE(mm) SD_SWE(mm)\n')
     print('Computation started...')
     for wsize1 in cwindows[coh_type]:
@@ -738,7 +739,7 @@ def senstivity_analysis(image_dict, coh_type='L', apply_masks=True):
                 for wsize2 in ewindows:
                     ws1, ws2 = int(wsize2[0] / 2.), int(wsize2[1] / 2.)
                     print('Ensemble averaging snow depth ...')
-                    avg_sd = get_ensemble_avg(snow_depth, (ws1, ws2), image_file=lia_file, outfile='Avg_SD',
+                    avg_sd = get_ensemble_avg(snow_depth, (ws1, ws2), image_file=lia_file, outfile='Avg_SD_57',
                                               verbose=False, wf=wf)
                     swe = get_total_swe(avg_sd, density=STANDING_SNOW_DENSITY, img_file=lia_file)
                     vr = check_values(avg_sd, lia_file, DHUNDI_COORDS)
