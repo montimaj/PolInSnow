@@ -172,7 +172,7 @@ def calc_interferogram(image_dict, pol_vec, outfile, apply_masks=True, verbose=T
         vv_mst, vv_slv = get_complex_image(vv_file)
         hv_mst, hv_slv = (hv_mst + vh_mst) / 2., (hv_slv + vh_slv) / 2.
 
-        fe = get_image_array(fe_file)
+        fe = get_image_array(fe_file) % (2 * np.pi)
 
         ifg = np.full_like(hv_mst, np.nan, dtype=np.complex)
         s1 = np.full_like(hv_mst, np.nan, dtype=np.complex)
@@ -698,23 +698,24 @@ def senstivity_analysis(image_dict, coh_type='L', apply_masks=True):
     s1_surf, s2_surf, ifg_surf = calc_interferogram(image_dict, pol_vec['HH-VV'], apply_masks=apply_masks,
                                                     outfile='Surf', verbose=False, load_files=lf)
     print('Creating senstivity parameters ...')
-    # wrange = range(3, 66, 2)
+    # wrange = range(45, 66, 2)
     # ewindows = [(i, j) for i, j in zip(wrange, wrange)]
     # clooks = range(2, 21)
     # coherence_threshold = np.round(np.linspace(0.10, 0.90, 17), 2)
-    ewindows = [(57, 57)]
-    cw = [(3, 3)]
+    ewindows = [(47, 47)]
+    cw = [(1, 3)]
     clooks = [3]
     cwindows = {'E': cw.copy(), 'L': clooks}
     # eta_values = np.round(np.linspace(0.01, 0.09, 9), 2)
     eta_values = [0.65]
     coherence_threshold = [0.6]
     cval = True
-    wf = False
+    wf = True
     scale_factor = 5
     lia_file = image_dict['LIA']
+    lf=True
 
-    outfile = open('Sensitivity5.csv', 'a+')
+    outfile = open('Sensitivity6.csv', 'a+')
     outfile.write('CWindow Epsilon CThreshold SWindow Mean_SSD(cm) SD_SSD(cm) Mean_SWE(mm) SD_SWE(mm)\n')
     print('Computation started...')
     for wsize1 in cwindows[coh_type]:
@@ -735,11 +736,11 @@ def senstivity_analysis(image_dict, coh_type='L', apply_masks=True):
             for ct in coherence_threshold:
                 print('Computing snow depth ...')
                 snow_depth = calc_snow_depth_hybrid(tmat_vol, ground_phase, kz, img_file=lia_file, eta=eta,
-                                                    coherence_threshold=ct, wf=wf, verbose=False, load_file=lf)
+                                                    coherence_threshold=ct, wf=wf, verbose=False, load_file=False)
                 for wsize2 in ewindows:
                     ws1, ws2 = int(wsize2[0] / 2.), int(wsize2[1] / 2.)
                     print('Ensemble averaging snow depth ...')
-                    avg_sd = get_ensemble_avg(snow_depth, (ws1, ws2), image_file=lia_file, outfile='Avg_SD_57',
+                    avg_sd = get_ensemble_avg(snow_depth, (ws1, ws2), image_file=lia_file, outfile='Avg_SD_47',
                                               verbose=False, wf=wf)
                     swe = get_total_swe(avg_sd, density=STANDING_SNOW_DENSITY, img_file=lia_file)
                     vr = check_values(avg_sd, lia_file, DHUNDI_COORDS)
