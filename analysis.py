@@ -150,6 +150,14 @@ def calc_mask_dict(img_dict):
     count_forest_elevation = defaultdict(lambda: 0)
     count_forest_slope = defaultdict(lambda: 0)
 
+    layover_arr = layover_arr[~np.isnan(layover_arr)]
+    tarea = len(layover_arr) * 9 / 1E+6
+    larea = len(layover_arr[np.round(layover_arr) != 0]) * 9 / 1E+6
+    farea = len(forest_arr[forest_arr == 0]) * 9 / 1E+6
+    print('Total study area', tarea)
+    print('Total layover area', larea, '%=', larea * 100 / tarea)
+    print('Total forest area', farea, '%=', farea * 100 / tarea)
+
     for idx, lval in np.ndenumerate(layover_arr):
         if not np.isnan(lval):
             aspect_class = get_classified_aspect(aspect_arr[idx])
