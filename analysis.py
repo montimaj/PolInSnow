@@ -99,6 +99,20 @@ def get_classified_elevation(elevation_val):
     return 'E6'
 
 
+def get_mask_stat(mask_dict, res=3):
+    """
+    Get mask areas in sq. km
+    :param mask_dict: Dictionary containing mask values
+    :param res: Pixel resolution in metres
+    :return: Mask area dict
+    """
+
+    area_dict = {}
+    for key in mask_dict.keys():
+        area_dict[key] = np.round(mask_dict[key] * res ** 2 / 1E+6, 2)
+    return area_dict
+
+
 def get_sd_dict_stat(sd_dict, count_dict, res=3):
     """
     Calculate mean snow depths and snow covered area (SCA) in sq. km from dictionary
@@ -112,8 +126,61 @@ def get_sd_dict_stat(sd_dict, count_dict, res=3):
     sca_dict = {}
     for key in sd_dict.keys():
         mean_dict[key] = np.round(sd_dict[key] / count_dict[key], 2)
-        sca_dict[key] = (count_dict[key] * res ** 2) / 1E+6
+        sca_dict[key] = np.round((count_dict[key] * res ** 2) / 1E+6, 2)
     return mean_dict, sca_dict
+
+
+def calc_mask_dict(img_dict):
+    """
+    Calculate mask dictionary stats
+    :param img_dict: Image dictionary containing GDAL references
+    :return: None
+    """
+
+    layover_arr = get_image_array(img_dict['LAYOVER'])
+    forest_arr = get_image_array(img_dict['FOREST'])
+    aspect_arr = get_image_array(img_dict['ASPECT'], set_no_data=False)
+    elevation_arr = get_image_array(img_dict['ELEVATION'], set_no_data=False)
+    slope_arr = get_image_array(img_dict['SLOPE'], set_no_data=False)
+
+    count_layover_aspect = defaultdict(lambda: 0)
+    count_layover_elevation = defaultdict(lambda: 0)
+    count_layover_slope = defaultdict(lambda: 0)
+    count_forest_aspect = defaultdict(lambda: 0)
+    count_forest_elevation = defaultdict(lambda: 0)
+    count_forest_slope = defaultdict(lambda: 0)
+
+    for idx, lval in np.ndenumerate(layover_arr):
+        if not np.isnan(lval):
+            aspect_class = get_classified_aspect(aspect_arr[idx])
+            elevation_class = get_classified_elevation(elevation_arr[idx])
+            slope_class = get_classified_slope(slope_arr[idx])
+            if np.round(layover_arr[idx]) != 0:
+                count_layover_aspect[aspect_class] += 1
+                count_layover_elevation[elevation_class] += 1
+                count_layover_slope[slope_class] += 1
+            if forest_arr[idx] == 0:
+                count_forest_aspect[aspect_class] += 1
+                count_forest_elevation[elevation_class] += 1
+                count_forest_slope[slope_class] += 1
+
+    la_aspect = get_mask_stat(count_layover_aspect)
+    la_elevation = get_mask_stat(count_layover_elevation)
+    la_slope = get_mask_stat(count_layover_slope)
+
+    print('Layover area (sq. km)')
+    print('LA:', la_aspect)
+    print('LE:', la_elevation)
+    print('LS:', la_slope)
+
+    fa_aspect = get_mask_stat(count_forest_aspect)
+    fa_elevation = get_mask_stat(count_forest_elevation)
+    fa_slope = get_mask_stat(count_forest_slope)
+
+    print('Forest area (sq. km)')
+    print('\nFA', fa_aspect)
+    print('FE', fa_elevation)
+    print('FS', fa_slope)
 
 
 def calc_sd_dict(img_dict, sd_arr):
@@ -151,24 +218,25 @@ def calc_sd_dict(img_dict, sd_arr):
     elevation_dict, sca_elevation = get_sd_dict_stat(elevation_dict, count_elevation)
     slope_dict, sca_slope = get_sd_dict_stat(slope_dict, count_slope)
 
-    print('SD_Values')
+    print('\nSD_Values (cm)')
     print('A:', aspect_dict)
     print('E:', elevation_dict)
     print('S:', slope_dict)
 
-    print('SCA')
+    print('\nSCA (sq. km)')
     print('A:', sca_aspect)
     print('E:', sca_elevation)
     print('S:', sca_slope)
 
 
 img_dict = read_images('/home/iirs/THESIS/Thesis_Files/Snow_Analysis/', '*.tif')
-fsd_arr = get_image_array(img_dict['FSD'])
-ssd_arr = get_image_array(img_dict['SSD'])
-print('FSD stats')
-calc_sd_dict(img_dict, fsd_arr)
-print('\nSSD stats')
-calc_sd_dict(img_dict, ssd_arr)
+calc_mask_dict(img_dict)
+# fsd_arr = get_image_array(img_dict['FSD'])
+# ssd_arr = get_image_array(img_dict['SSD'])
+# print('FSD stats')
+# calc_sd_dict(img_dict, fsd_arr)
+# print('\nSSD stats')
+# calc_sd_dict(img_dict, ssd_arr)
 
 
 
