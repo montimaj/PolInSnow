@@ -35,7 +35,7 @@ def get_image_array(img_file, set_no_data=True):
     no_data_value = band.GetNoDataValue()
     arr = band.ReadAsArray()
     if set_no_data:
-        arr[arr == int(no_data_value)] = np.nan
+        arr[arr == no_data_value] = np.nan
     return arr
 
 
@@ -237,17 +237,91 @@ def calc_sd_dict(img_dict, sd_arr):
     print('S:', sca_slope)
 
 
+def write_file(arr, src_file, outfile='test', is_complex=False, no_data_value=-32768, dt=gdal.GDT_Float32):
+    """
+    Write image files in TIF format
+    :param dt: Datatype of output file
+    :param arr: Image array to write
+    :param src_file: Original image file for retrieving affine transformation parameters
+    :param outfile: Output file path
+    :param no_data_value: No data value to be set
+    :param is_complex: If true, write complex image array in two separate bands
+    :return: None
+    """
+
+    driver = gdal.GetDriverByName("GTiff")
+    if is_complex:
+        out = driver.Create(outfile + ".tif", arr.shape[1], arr.shape[0], 2, dt)
+    else:
+        out = driver.Create(outfile + ".tif", arr.shape[1], arr.shape[0], 1, dt)
+    out.SetProjection(src_file.GetProjection())
+    out.SetGeoTransform(src_file.GetGeoTransform())
+    out.GetRasterBand(1).SetNoDataValue(no_data_value)
+    if is_complex:
+        arr[np.isnan(arr)] = no_data_value + no_data_value * 1j
+        out.GetRasterBand(2).SetNoDataValue(no_data_value)
+        out.GetRasterBand(1).WriteArray(arr.real)
+        out.GetRasterBand(2).WriteArray(arr.imag)
+    else:
+        arr[np.isnan(arr)] = no_data_value
+        out.GetRasterBand(1).WriteArray(arr)
+    out.FlushCache()
+
+
+def get_wishart_class_stats(wishart_arr, layover_arr, forest_arr, check_forests=True):
+    """
+    Calculate Wishart class percentages
+    :param check_forests: Set true to mask out forests
+    :param forest_arr: Forest array
+    :param wishart_arr: Wishart classified image array
+    :param layover_arr: Layover array
+    :return: None
+    """
+
+    new_arr = wishart_arr.copy()
+    new_arr.fill(np.nan)
+    print('Checking valid pixels...')
+    for index, value in np.ndenumerate(wishart_arr):
+        if not np.isnan(value):
+            new_arr[index] = int(round(value))
+            if np.round(layover_arr[index]) != 0 or (check_forests and forest_arr[index] == 0):
+                new_arr[index] = np.nan
+    new_arr = new_arr[~np.isnan(new_arr)]
+    classes, count = np.unique(new_arr, return_counts=True)
+    total_pixels = np.sum(count)
+    print('Total pixels=', total_pixels)
+    class_percent = np.round(count * 100. / total_pixels, 2)
+    print(classes, class_percent)
+
+
+def correct_wishart_file(img_dict, check_forests=False):
+    """
+    Convert fuzzy wishart classes to crisp
+    :param check_forests: Set true to apply forest mask
+    :param img_dict: Image dictionary containing GDAL references
+    :return: None
+    """
+    w1_file = img_dict['Wishart_Jan']
+    w1_arr = get_image_array(w1_file)
+    w2_arr = get_image_array(img_dict['Wishart_Jun'])
+    # write_file(w1_arr, w1_file, outfile='Out/Wishart_Jan_Int', dt=gdal.GDT_Int32)
+    # write_file(w2_arr, w1_file, outfile='Out/Wishart_Jun_Int', dt=gdal.GDT_Int32)
+    layover_arr = get_image_array(img_dict['LAYOVER'])
+    forest_arr = None
+    if check_forests:
+        forest_arr = get_image_array(img_dict['FOREST'])
+    print('\nWishart_Jan')
+    get_wishart_class_stats(w1_arr, layover_arr, forest_arr, check_forests=check_forests)
+    print('\nWishart_June')
+    get_wishart_class_stats(w2_arr, layover_arr, forest_arr, check_forests=check_forests)
+
+
 img_dict = read_images('/home/iirs/THESIS/Thesis_Files/Snow_Analysis/', '*.tif')
-calc_mask_dict(img_dict)
+# calc_mask_dict(img_dict)
 # fsd_arr = get_image_array(img_dict['FSD'])
 # ssd_arr = get_image_array(img_dict['SSD'])
 # print('FSD stats')
 # calc_sd_dict(img_dict, fsd_arr)
 # print('\nSSD stats')
 # calc_sd_dict(img_dict, ssd_arr)
-
-
-
-
-
-
+correct_wishart_file(img_dict)
