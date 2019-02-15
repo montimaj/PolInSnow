@@ -704,18 +704,18 @@ def senstivity_analysis(image_dict, coh_type='L', apply_masks=True):
     # coherence_threshold = np.round(np.linspace(0.10, 0.90, 17), 2)
     ewindows = [(47, 47)]
     cw = [(1, 3)]
-    clooks = [3]
+    clooks = [3, 5, 6, 7, 9, 11]
     cwindows = {'E': cw.copy(), 'L': clooks}
     # eta_values = np.round(np.linspace(0.01, 0.09, 9), 2)
     eta_values = [0.65]
     coherence_threshold = [0.6]
     cval = True
-    wf = True
+    wf = False
     scale_factor = 5
     lia_file = image_dict['LIA']
-    lf=True
+    lf=False
 
-    outfile = open('Sensitivity6.csv', 'a+')
+    outfile = open('test_coh.csv', 'a+')
     outfile.write('CWindow Epsilon CThreshold SWindow Mean_SSD(cm) SD_SSD(cm) Mean_SWE(mm) SD_SWE(mm)\n')
     print('Computation started...')
     for wsize1 in cwindows[coh_type]:
@@ -725,32 +725,32 @@ def senstivity_analysis(image_dict, coh_type='L', apply_masks=True):
         tmat_surf, wstr1 = get_coherence(s1_surf, s2_surf, ifg_surf, outfile='Surf', wsize=wsize1, coh_type=coh_type,
                                          apply_masks=apply_masks, img_dict=image_dict, verbose=False, wf=wf,
                                          validate=cval, load_file=lf)
-        print('Computing ground phase ...')
-        ground_phase = get_ground_phase(tmat_vol, tmat_surf, (10, 10), img_dict=image_dict, apply_masks=apply_masks,
-                                        verbose=False, wf=wf, load_file=lf)
-        print('Computing vertical wavenumber ...')
-        kz = compute_vertical_wavenumber(lia_file, scale_factor=scale_factor, outfile='Wavenumber',
-                                         wsize=(10, 10), verbose=False, wf=wf, load_file=lf)
-        wstr1 = str(wsize1)
-        for eta in eta_values:
-            for ct in coherence_threshold:
-                print('Computing snow depth ...')
-                snow_depth = calc_snow_depth_hybrid(tmat_vol, ground_phase, kz, img_file=lia_file, eta=eta,
-                                                    coherence_threshold=ct, wf=wf, verbose=False, load_file=False)
-                for wsize2 in ewindows:
-                    ws1, ws2 = int(wsize2[0] / 2.), int(wsize2[1] / 2.)
-                    print('Ensemble averaging snow depth ...')
-                    avg_sd = get_ensemble_avg(snow_depth, (ws1, ws2), image_file=lia_file, outfile='Avg_SD_47',
-                                              verbose=False, wf=wf)
-                    swe = get_total_swe(avg_sd, density=STANDING_SNOW_DENSITY, img_file=lia_file)
-                    vr = check_values(avg_sd, lia_file, DHUNDI_COORDS)
-                    vr_str = ' '.join([str(r) for r in vr])
-                    wstr2 = '(' + str(wsize2[0]) + ',' + str(wsize2[1]) + ')'
-                    vr = check_values(swe, lia_file, DHUNDI_COORDS)
-                    vr_str2 = ' '.join([str(r) for r in vr])
-                    final_str = wstr1 + ' ' + str(eta) + ' ' + str(ct) + ' ' + wstr2 + ' ' + vr_str + ' ' + vr_str2 + '\n'
-                    print(final_str)
-                    outfile.write(final_str)
+        # print('Computing ground phase ...')
+        # ground_phase = get_ground_phase(tmat_vol, tmat_surf, (10, 10), img_dict=image_dict, apply_masks=apply_masks,
+        #                                 verbose=False, wf=wf, load_file=lf)
+        # print('Computing vertical wavenumber ...')
+        # kz = compute_vertical_wavenumber(lia_file, scale_factor=scale_factor, outfile='Wavenumber',
+        #                                  wsize=(10, 10), verbose=False, wf=wf, load_file=lf)
+        # wstr1 = str(wsize1)
+        # for eta in eta_values:
+        #     for ct in coherence_threshold:
+        #         print('Computing snow depth ...')
+        #         snow_depth = calc_snow_depth_hybrid(tmat_vol, ground_phase, kz, img_file=lia_file, eta=eta,
+        #                                             coherence_threshold=ct, wf=wf, verbose=False, load_file=False)
+        #         for wsize2 in ewindows:
+        #             ws1, ws2 = int(wsize2[0] / 2.), int(wsize2[1] / 2.)
+        #             print('Ensemble averaging snow depth ...')
+        #             avg_sd = get_ensemble_avg(snow_depth, (ws1, ws2), image_file=lia_file, outfile='Avg_SD_47',
+        #                                       verbose=False, wf=wf)
+        #             swe = get_total_swe(avg_sd, density=STANDING_SNOW_DENSITY, img_file=lia_file)
+        #             vr = check_values(avg_sd, lia_file, DHUNDI_COORDS)
+        #             vr_str = ' '.join([str(r) for r in vr])
+        #             wstr2 = '(' + str(wsize2[0]) + ',' + str(wsize2[1]) + ')'
+        #             vr = check_values(swe, lia_file, DHUNDI_COORDS)
+        #             vr_str2 = ' '.join([str(r) for r in vr])
+        #             final_str = wstr1 + ' ' + str(eta) + ' ' + str(ct) + ' ' + wstr2 + ' ' + vr_str + ' ' + vr_str2 + '\n'
+        #             print(final_str)
+        #             outfile.write(final_str)
                     # vr = validate_dry_snow('Avg_SD.tif', (705849.1335, 3577999.4174)) # Kothi
     outfile.close()
 
