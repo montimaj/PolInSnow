@@ -99,35 +99,63 @@ def get_classified_elevation(elevation_val):
     return 'E6'
 
 
-def get_mask_stat(mask_dict, res=3):
-    """
-    Get mask areas in sq. km
-    :param mask_dict: Dictionary containing mask values
-    :param res: Pixel resolution in metres
-    :return: Mask area dict
-    """
-
-    area_dict = {}
-    for key in mask_dict.keys():
-        area_dict[key] = np.round(mask_dict[key] * res ** 2 / 1E+6, 2)
-    return area_dict
-
-
-def get_sd_dict_stat(sd_dict, count_dict, res=3):
+def get_dict_stat(count_dict, val_dict=None, res=3, only_area=False):
     """
     Calculate mean snow depths and snow covered area (SCA) in sq. km from dictionary
-    :param sd_dict: Dictionary containing total snow depth values
+    :param only_area: Set true to calculate only area statistics
+    :param val_dict: Dictionary containing values
     :param count_dict: Dictionary containing number of snow pixels per class
     :param res: Pixel resolution in metres
-    :return: Mean SD dict and SCA dict
+    :return: Area dict and/or Stat dict
     """
 
-    mean_dict = {}
-    sca_dict = {}
-    for key in sd_dict.keys():
-        mean_dict[key] = np.round(sd_dict[key] / count_dict[key], 2)
-        sca_dict[key] = np.round((count_dict[key] * res ** 2) / 1E+6, 2)
-    return mean_dict, sca_dict
+    stat_dict = {}
+    area_dict = {}
+    for key in count_dict.keys():
+        if not only_area:
+            val = val_dict[key]
+            stat_dict[key] = np.round(val / count_dict[key], 2)
+        area_dict[key] = np.round((count_dict[key] * res ** 2) / 1E+6, 2)
+    if only_area:
+        return area_dict
+    return area_dict, stat_dict
+
+
+def calc_scattering_dict(wishart_arr, img_dict, scat_values=tuple(range(1, 10))):
+    """
+    Calculate wishart class statistics wrt aspect, elevation and slope
+    :param scat_values: Wishart scattering classes
+    :param wishart_arr: Wishart classified array
+    :param img_dict: Image dictionary containing GDAL references
+    :return: None
+    """
+
+    aspect_arr = get_image_array(img_dict['ASPECT'], set_no_data=False)
+    elevation_arr = get_image_array(img_dict['ELEVATION'], set_no_data=False)
+    slope_arr = get_image_array(img_dict['SLOPE'], set_no_data=False)
+
+    for wc in scat_values:
+        count_aspect = defaultdict(lambda: 0)
+        count_elevation = defaultdict(lambda: 0)
+        count_slope = defaultdict(lambda: 0)
+        for idx, val in np.ndenumerate(wishart_arr):
+            if val == wc:
+                aspect_class = get_classified_aspect(aspect_arr[idx])
+                elevation_class = get_classified_elevation(elevation_arr[idx])
+                slope_class = get_classified_slope(slope_arr[idx])
+                count_aspect[aspect_class] += 1
+                count_elevation[elevation_class] += 1
+                count_slope[slope_class] += 1
+
+        print('\nScattering area for class wrt aspect', wc)
+        area_dict = get_dict_stat(count_aspect, only_area=True)
+        print(area_dict)
+        print('\nScattering area for class wrt elevation', wc)
+        area_dict = get_dict_stat(count_elevation, only_area=True)
+        print(area_dict)
+        print('\nScattering area for class wrt slope', wc)
+        area_dict = get_dict_stat(count_slope, only_area=True)
+        print(area_dict)
 
 
 def calc_mask_dict(img_dict):
@@ -172,18 +200,17 @@ def calc_mask_dict(img_dict):
                 count_forest_elevation[elevation_class] += 1
                 count_forest_slope[slope_class] += 1
 
-    la_aspect = get_mask_stat(count_layover_aspect)
-    la_elevation = get_mask_stat(count_layover_elevation)
-    la_slope = get_mask_stat(count_layover_slope)
-
+    la_aspect = get_dict_stat(count_layover_aspect, only_area=True)
+    la_elevation = get_dict_stat(count_layover_elevation, only_area=True)
+    la_slope = get_dict_stat(count_layover_slope, only_area=True)
     print('Layover area (sq. km)')
     print('LA:', la_aspect)
     print('LE:', la_elevation)
     print('LS:', la_slope)
 
-    fa_aspect = get_mask_stat(count_forest_aspect)
-    fa_elevation = get_mask_stat(count_forest_elevation)
-    fa_slope = get_mask_stat(count_forest_slope)
+    fa_aspect = get_dict_stat(count_forest_aspect, only_area=True)
+    fa_elevation = get_dict_stat(count_forest_elevation, only_area=True)
+    fa_slope = get_dict_stat(count_forest_slope, only_area=True)
 
     print('Forest area (sq. km)')
     print('\nFA', fa_aspect)
@@ -222,9 +249,9 @@ def calc_sd_dict(img_dict, sd_arr):
             count_elevation[elevation_class] += 1
             count_slope[slope_class] += 1
 
-    aspect_dict, sca_aspect = get_sd_dict_stat(aspect_dict, count_aspect)
-    elevation_dict, sca_elevation = get_sd_dict_stat(elevation_dict, count_elevation)
-    slope_dict, sca_slope = get_sd_dict_stat(slope_dict, count_slope)
+    sca_aspect, aspect_dict = get_dict_stat(count_aspect, aspect_dict)
+    sca_elevation, elevation_dict = get_dict_stat(count_elevation, elevation_dict)
+    sca_slope, slope_dict = get_dict_stat(count_slope, slope_dict)
 
     print('\nSD_Values (cm)')
     print('A:', aspect_dict)
@@ -268,9 +295,13 @@ def write_file(arr, src_file, outfile='test', is_complex=False, no_data_value=-3
     out.FlushCache()
 
 
-def get_wishart_class_stats(wishart_arr, layover_arr, forest_arr, check_forests=True):
+def get_wishart_class_stats(wishart_arr, layover_arr, forest_arr, outfile, img_file, check_forests,
+                            total_pixels=None):
     """
     Calculate Wishart class percentages
+    :param total_pixels: This is useful when two images are misaligned by a few pixels
+    :param img_file: Original GDAL reference containing affine transformation coordinates
+    :param outfile: Output file name
     :param check_forests: Set true to mask out forests
     :param forest_arr: Forest array
     :param wishart_arr: Wishart classified image array
@@ -286,12 +317,15 @@ def get_wishart_class_stats(wishart_arr, layover_arr, forest_arr, check_forests=
             new_arr[index] = int(round(value))
             if np.round(layover_arr[index]) != 0 or (check_forests and forest_arr[index] == 0):
                 new_arr[index] = np.nan
+    # write_file(new_arr.copy(), img_file, outfile=outfile)
     new_arr = new_arr[~np.isnan(new_arr)]
     classes, count = np.unique(new_arr, return_counts=True)
-    total_pixels = np.sum(count)
+    if not total_pixels:
+        total_pixels = np.sum(count)
     print('Total pixels=', total_pixels)
     class_percent = np.round(count * 100. / total_pixels, 2)
     print(classes, class_percent)
+    return total_pixels
 
 
 def correct_wishart_file(img_dict, check_forests=False):
@@ -304,24 +338,31 @@ def correct_wishart_file(img_dict, check_forests=False):
     w1_file = img_dict['Wishart_Jan']
     w1_arr = get_image_array(w1_file)
     w2_arr = get_image_array(img_dict['Wishart_Jun'])
-    # write_file(w1_arr, w1_file, outfile='Out/Wishart_Jan_Int', dt=gdal.GDT_Int32)
+
     # write_file(w2_arr, w1_file, outfile='Out/Wishart_Jun_Int', dt=gdal.GDT_Int32)
     layover_arr = get_image_array(img_dict['LAYOVER'])
     forest_arr = None
     if check_forests:
         forest_arr = get_image_array(img_dict['FOREST'])
     print('\nWishart_Jan')
-    get_wishart_class_stats(w1_arr, layover_arr, forest_arr, check_forests=check_forests)
+    total_pixels = get_wishart_class_stats(w1_arr, layover_arr, forest_arr, outfile='Out/WJan', img_file=w1_file,
+                                           check_forests=check_forests)
     print('\nWishart_June')
-    get_wishart_class_stats(w2_arr, layover_arr, forest_arr, check_forests=check_forests)
+    get_wishart_class_stats(w2_arr, layover_arr, forest_arr, outfile='Out/WJun', img_file=w1_file,
+                            check_forests=check_forests, total_pixels=total_pixels)
 
 
 img_dict = read_images('/home/iirs/THESIS/Thesis_Files/Snow_Analysis/', '*.tif')
-# calc_mask_dict(img_dict)
-# fsd_arr = get_image_array(img_dict['FSD'])
-# ssd_arr = get_image_array(img_dict['SSD'])
-# print('FSD stats')
-# calc_sd_dict(img_dict, fsd_arr)
-# print('\nSSD stats')
-# calc_sd_dict(img_dict, ssd_arr)
-correct_wishart_file(img_dict)
+calc_mask_dict(img_dict)
+fsd_arr = get_image_array(img_dict['FSD'])
+ssd_arr = get_image_array(img_dict['SSD'])
+print('FSD stats')
+calc_sd_dict(img_dict, fsd_arr)
+print('\nSSD stats')
+calc_sd_dict(img_dict, ssd_arr)
+wjan_arr = get_image_array(img_dict['WJan'])
+wjun_arr = get_image_array(img_dict['WJun'])
+print('\nWishart Jan stats')
+calc_scattering_dict(wjan_arr, img_dict, scat_values=(3, 5, 8))
+print('\nWishart Jun stats')
+calc_scattering_dict(wjun_arr, img_dict, scat_values=(3, 5, 8))
