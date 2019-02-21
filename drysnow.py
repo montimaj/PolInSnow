@@ -489,9 +489,9 @@ def calc_sinc_inv(val):
     """
     if val == 1:
         return 0
-    sinc_inv_approx = np.pi - 2 * np.arcsin(val ** 0.8)
+    sinc_inv_approx = 1 - 2 * np.arcsin(val ** 0.8) / np.pi
     try:
-        sinc_inv = scp.newton(mysinc, args=(val,), x0=1)
+        sinc_inv = scp.newton(mysinc, args=(val,), x0=sinc_inv_approx)
         if not np.isnan(sinc_inv):
             return sinc_inv
     except RuntimeError:
@@ -702,20 +702,20 @@ def senstivity_analysis(image_dict, coh_type='L', apply_masks=True):
     # ewindows = [(i, j) for i, j in zip(wrange, wrange)]
     # clooks = range(2, 21)
     # coherence_threshold = np.round(np.linspace(0.10, 0.90, 17), 2)
-    ewindows = [(47, 47)]
+    ewindows = [(57, 57)]
     cw = [(1, 3)]
-    clooks = [3, 5, 6, 7, 9, 11]
+    # clooks = [3, 5, 6, 7, 9, 11]
+    clooks = [3]
     cwindows = {'E': cw.copy(), 'L': clooks}
-    # eta_values = np.round(np.linspace(0.01, 0.09, 9), 2)
-    eta_values = [0.65]
+    eta_values = np.arange(0, 1, 0.05)
+    # eta_values = [0.65]
     coherence_threshold = [0.6]
     cval = True
     wf = False
     scale_factor = 5
     lia_file = image_dict['LIA']
-    lf=False
 
-    outfile = open('test_coh.csv', 'a+')
+    outfile = open('test_eta.csv', 'a+')
     outfile.write('CWindow Epsilon CThreshold SWindow Mean_SSD(cm) SD_SSD(cm) Mean_SWE(mm) SD_SWE(mm)\n')
     print('Computation started...')
     for wsize1 in cwindows[coh_type]:
@@ -732,7 +732,7 @@ def senstivity_analysis(image_dict, coh_type='L', apply_masks=True):
         kz = compute_vertical_wavenumber(lia_file, scale_factor=scale_factor, outfile='Wavenumber',
                                          wsize=(10, 10), verbose=False, wf=wf, load_file=lf)
         wstr1 = str(wsize1)
-        for eta in eta_values:
+        for eta in eta_values[1:]:
             for ct in coherence_threshold:
                 print('Computing snow depth ...')
                 snow_depth = calc_snow_depth_hybrid(tmat_vol, ground_phase, kz, img_file=lia_file, eta=eta,

@@ -24,6 +24,15 @@ Wishart_June
 Total pixels= 7571825
 [1. 2. 3. 4. 5. 6. 7. 8. 9.] [ 8.23  3.92 10.88 10.25 14.93 11.31 15.24 15.31  9.9 ]
 
+Wishart_Jan Quad Itr 3
+Total pixels= 7571825
+[1. 2. 3. 4. 5. 6. 7. 8.] [ 4.45  4.63  5.51  7.92 15.62 12.44 27.67 21.78]
+
+Wishart_Jan Quad Itr 10
+Total pixels= 7571825
+[1. 2. 3. 4. 5. 6. 7. 8.] [ 5.69  7.68  5.04 10.02 15.42 10.84 23.7  21.61]
+
+
 
 ############# Classwise Area wrt Aspect, Elevation, and Slope #################
 Wishart Jan stats
