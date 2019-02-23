@@ -46,7 +46,7 @@ def get_classified_aspect(aspect_val):
     :return: Slope direction
     """
 
-    if aspect_val == -1:
+    if aspect_val <= -1:
         return 'F'
     elif aspect_val <= 22.5 or aspect_val >= 337.5:
         return 'N'
@@ -72,7 +72,9 @@ def get_classified_slope(slope_val):
     :return: Classified slope
     """
 
-    if slope_val <= 20:
+    if slope_val < 0:
+        return 'NaN'
+    elif slope_val <= 20:
         return 'L'
     elif 20 < slope_val < 40:
         return 'M'
@@ -216,6 +218,36 @@ def calc_mask_dict(img_dict):
     print('\nFA', fa_aspect)
     print('FE', fa_elevation)
     print('FS', fa_slope)
+
+
+def calc_areas(img_file, type='A'):
+    """
+    Calculate Aspect, Elevation or Slope areas
+    :param img_file: GDAL reference corresponding to aspect, elevation or slope
+    :param type: Set 'A' for aspect, 'E' for elevation, and 'S' for slope
+    :return: None
+    """
+
+    set_no_data = True
+    if type == 'A' or type == 'S':
+        set_no_data = False
+    img_arr = get_image_array(img_file, set_no_data=set_no_data)
+    area_dict = defaultdict(lambda: 0)
+    count = 0
+    for index, val in np.ndenumerate(img_arr):
+        if val != -32767 or not np.isnan(val):
+            count += 1
+            if type == 'A':
+                c_type = get_classified_aspect(val)
+            elif type == 'E':
+                c_type = get_classified_elevation(val)
+            else:
+                c_type = get_classified_slope(val)
+            area_dict[c_type] += 1
+    area_stat = get_dict_stat(area_dict, only_area=True)
+    print(count * 9 / 1E+6)
+    print(type + ' Area in sq. km:')
+    print(area_stat)
 
 
 def calc_sd_dict(img_dict, sd_arr):
@@ -367,4 +399,5 @@ img_dict = read_images('/home/iirs/THESIS/Thesis_Files/Snow_Analysis/', '*.tif')
 # calc_scattering_dict(wjan_arr, img_dict, scat_values=(3, 5, 8))
 # print('\nWishart Jun stats')
 # calc_scattering_dict(wjun_arr, img_dict, scat_values=(3, 5, 8))
-correct_wishart_file(img_dict)
+# correct_wishart_file(img_dict)
+calc_areas(img_dict['ASPECT'], type='A')
