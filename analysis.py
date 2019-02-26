@@ -75,10 +75,16 @@ def get_classified_slope(slope_val):
     if slope_val < 0:
         return 'NaN'
     elif slope_val <= 20:
-        return 'L'
-    elif 20 < slope_val < 40:
-        return 'M'
-    return 'H'
+        return 'S1'
+    elif 20 < slope_val <= 30:
+        return 'S2'
+    elif 30 < slope_val <= 40:
+        return 'S3'
+    elif 40 < slope_val <= 50:
+        return 'S4'
+    elif 50 < slope_val <= 60:
+        return 'S5'
+    return 'S6'
 
 
 def get_classified_elevation(elevation_val):
@@ -386,18 +392,18 @@ def correct_wishart_file(img_dict, check_forests=False):
 
 
 img_dict = read_images('/home/iirs/THESIS/Thesis_Files/Snow_Analysis/', '*.tif')
-# calc_mask_dict(img_dict)
-# fsd_arr = get_image_array(img_dict['FSD'])
-# ssd_arr = get_image_array(img_dict['SSD'])
-# print('FSD stats')
-# calc_sd_dict(img_dict, fsd_arr)
-# print('\nSSD stats')
-# calc_sd_dict(img_dict, ssd_arr)
+calc_mask_dict(img_dict)
+fsd_arr = get_image_array(img_dict['FSD'])
+ssd_arr = get_image_array(img_dict['SSD'])
+print('FSD stats')
+calc_sd_dict(img_dict, fsd_arr)
+print('\nSSD stats')
+calc_sd_dict(img_dict, ssd_arr)
 # wjan_arr = get_image_array(img_dict['WJan'])
 # wjun_arr = get_image_array(img_dict['WJun'])
-# print('\nWishart Jan stats')
-# calc_scattering_dict(wjan_arr, img_dict, scat_values=(3, 5, 8))
+print('\nWishart Jan stats')
+# calc_scattering_dict(wjan_arr, img_dict, scat_values=(2, 3, 5, 8))
 # print('\nWishart Jun stats')
 # calc_scattering_dict(wjun_arr, img_dict, scat_values=(3, 5, 8))
 # correct_wishart_file(img_dict)
-calc_areas(img_dict['ASPECT'], type='A')
+# calc_areas(img_dict['ASPECT'], type='A')
