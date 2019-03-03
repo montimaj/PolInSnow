@@ -76,15 +76,9 @@ def get_classified_slope(slope_val):
         return 'NaN'
     elif slope_val <= 20:
         return 'S1'
-    elif 20 < slope_val <= 30:
+    elif 20 < slope_val <= 40:
         return 'S2'
-    elif 30 < slope_val <= 40:
-        return 'S3'
-    elif 40 < slope_val <= 50:
-        return 'S4'
-    elif 50 < slope_val <= 60:
-        return 'S5'
-    return 'S6'
+    return 'S3'
 
 
 def get_classified_elevation(elevation_val):
@@ -109,7 +103,8 @@ def get_classified_elevation(elevation_val):
 
 def get_dict_stat(count_dict, val_dict=None, res=3, only_area=False):
     """
-    Calculate mean snow depths and snow covered area (SCA) in sq. km from dictionary
+    Calculate mean, standard deviation and standard error of snow depth or
+    snow covered area (SCA) in sq. km from dictionary
     :param only_area: Set true to calculate only area statistics
     :param val_dict: Dictionary containing values
     :param count_dict: Dictionary containing number of snow pixels per class
@@ -121,8 +116,11 @@ def get_dict_stat(count_dict, val_dict=None, res=3, only_area=False):
     area_dict = {}
     for key in count_dict.keys():
         if not only_area:
-            val = val_dict[key]
-            stat_dict[key] = np.round(val / count_dict[key], 2)
+            sd_arr = np.array(val_dict[key])
+            mean_sd = np.mean(sd_arr)
+            std_dev = np.std(sd_arr)
+            std_err = std_dev / np.sqrt(sd_arr.size)
+            stat_dict[key] = (np.round(mean_sd, 2), np.round(std_dev, 2), np.round(std_err, 2))
         area_dict[key] = np.round((count_dict[key] * res ** 2) / 1E+6, 2)
     if only_area:
         return area_dict
@@ -268,9 +266,9 @@ def calc_sd_dict(img_dict, sd_arr):
     elevation_arr = get_image_array(img_dict['ELEVATION'], set_no_data=False)
     slope_arr = get_image_array(img_dict['SLOPE'], set_no_data=False)
 
-    aspect_dict = defaultdict(lambda: 0)
-    elevation_dict = defaultdict(lambda: 0)
-    slope_dict = defaultdict(lambda: 0)
+    aspect_dict = defaultdict(lambda: [])
+    elevation_dict = defaultdict(lambda: [])
+    slope_dict = defaultdict(lambda: [])
     count_aspect = defaultdict(lambda: 0)
     count_elevation = defaultdict(lambda: 0)
     count_slope = defaultdict(lambda: 0)
@@ -280,9 +278,9 @@ def calc_sd_dict(img_dict, sd_arr):
             aspect_class = get_classified_aspect(aspect_arr[idx])
             elevation_class = get_classified_elevation(elevation_arr[idx])
             slope_class = get_classified_slope(slope_arr[idx])
-            aspect_dict[aspect_class] += sd
-            elevation_dict[elevation_class] += sd
-            slope_dict[slope_class] += sd
+            aspect_dict[aspect_class].append(sd)
+            elevation_dict[elevation_class].append(sd)
+            slope_dict[slope_class].append(sd)
             count_aspect[aspect_class] += 1
             count_elevation[elevation_class] += 1
             count_slope[slope_class] += 1
@@ -392,7 +390,7 @@ def correct_wishart_file(img_dict, check_forests=False):
 
 
 img_dict = read_images('/home/iirs/THESIS/Thesis_Files/Snow_Analysis/', '*.tif')
-calc_mask_dict(img_dict)
+# calc_mask_dict(img_dict)
 fsd_arr = get_image_array(img_dict['FSD'])
 ssd_arr = get_image_array(img_dict['SSD'])
 print('FSD stats')
@@ -401,7 +399,7 @@ print('\nSSD stats')
 calc_sd_dict(img_dict, ssd_arr)
 # wjan_arr = get_image_array(img_dict['WJan'])
 # wjun_arr = get_image_array(img_dict['WJun'])
-print('\nWishart Jan stats')
+# print('\nWishart Jan stats')
 # calc_scattering_dict(wjan_arr, img_dict, scat_values=(2, 3, 5, 8))
 # print('\nWishart Jun stats')
 # calc_scattering_dict(wjun_arr, img_dict, scat_values=(3, 5, 8))
