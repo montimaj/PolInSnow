@@ -1,5 +1,9 @@
 # PolInSnow
-Standing snow depth estimation using PolInSAR
+Standing snow depth estimation using PolInSAR. 
+
+Preprint: https://doi.org/10.31223/osf.io/6v4h3
+
+Thesis: https://library.itc.utwente.nl/papers_2019/msc/gfm/majumdar.pdf
 
 Standing snow depth map and histogram for Jan 8, 2016
 
