@@ -5,13 +5,27 @@ import os
 import scipy.optimize as scp
 import affine
 
-MEAN_INC_TDX = (38.07691192626953 + 39.37236785888672) / 2.
-MEAN_INC_TSX = (38.104190826416016 + 39.37824630737305) / 2.
+MEAN_INC_TDX = {'12292015': (33.04875564575195 + 34.621795654296875) / 2.,
+                '01082016': (38.07691192626953 + 39.37236785888672) / 2.,
+                '01092016': (32.936092376708984 + 34.7651252746582) / 2.,
+                '01192016': (38.038177490234375 + 39.37773895263672) / 2.,
+                '01202016': (32.93116569519043 + 34.76059341430664) / 2.,
+                '01302016': (38.072940826416016 + 39.38078689575195) / 2.}  # degrees
+
+MEAN_INC_TSX = {'12292015': (33.07475662231445 + 34.60667610168457) / 2.,
+                '01082016': (38.104190826416016 + 39.37824630737305) / 2.,
+                '01092016': (32.974159240722656 + 34.826759338378906) / 2.,
+                '01192016': (38.101966857910156 + 39.38127517700195) / 2.,
+                '01202016': (32.97199821472168 + 34.81568145751953) / 2.,
+                '01302016': (38.10858917236328 + 39.38400650024414) / 2.}  # degrees
 WAVELENGTH = 3.10880853  # cm
-HOA = 6318  # cm
-BPERP = 9634 # cm
+HOA = {'12292015': 1854, '01082016': 6318, '01092016': 1761, '01192016': 6334, '01202016': 1753, '01302016': 6202}  # cm
+# BPERP = 9634  # cm
 NO_DATA_VALUE = -32768
-STANDING_SNOW_DENSITY = 0.315  # g/cm^3
+STANDING_SNOW_DENSITY = {'12292015': 0.429, '01082016': 0.315, '01092016': 0.294, '01192016': 0.347, '01202016': 0.322,
+                         '01302016': 0.210}  # g/cm^3
+STANDING_SNOW_DEPTH = {'12292015': 36.80, '01082016': 54.90, '01092016': 61.80, '01192016': 42.80, '01202016': 44.60,
+                       '01302016': 70.00}  # cm
 DHUNDI_COORDS = (700089.771, 3581794.5556)  # UTM 43N
 
 
@@ -652,8 +666,8 @@ def get_coherence(s1, s2, ifg, wsize, img_dict, apply_masks, coh_type, verbose, 
     return tmat, wstr
 
 
-def compute_vertical_wavenumber(lia_file, wsize, outfile, scale_factor, is_single_pass=True, verbose=True, wf=True,
-                                load_file=False):
+def compute_vertical_wavenumber(lia_file, wsize, outfile, scale_factor, image_date, is_single_pass=True, verbose=True,
+                                wf=True, load_file=False):
     """
     Calculate vertical wavenumber
     :param lia_file: Local incidence angle GDAL reference
@@ -662,6 +676,7 @@ def compute_vertical_wavenumber(lia_file, wsize, outfile, scale_factor, is_singl
     :param scale_factor: Vertical wavenumber scale factor (real valued, shoud be chosen according to the study area)
     :param is_single_pass: Set true for single-pass acquisitions
     :param verbose: Set true for detailed logs
+    :param image_date: Image acquisition date string (mmddyyyy) for extracting correct incidence angles
     :param wf: Set true to write intermediate files
     :param load_file: Set true to load existing numpy binary and skip computation
     :return: Vertical wavenumber array
@@ -669,7 +684,7 @@ def compute_vertical_wavenumber(lia_file, wsize, outfile, scale_factor, is_singl
     """
     if not load_file:
         lia = get_image_array(lia_file)
-        del_theta = np.abs(MEAN_INC_TDX - MEAN_INC_TSX)
+        del_theta = np.abs(MEAN_INC_TDX[image_date] - MEAN_INC_TSX[image_date])
         m = 4
         if is_single_pass:
             m = 2
@@ -681,17 +696,18 @@ def compute_vertical_wavenumber(lia_file, wsize, outfile, scale_factor, is_singl
     return kz
 
 
-def senstivity_analysis(image_dict, coh_type='L', apply_masks=True):
+def senstivity_analysis(image_dict, coh_type='L', image_date='12292015', apply_masks=True, lf=False):
     """
     Main caller function for sensitivity analysis
     :param image_dict: Image dictionary containing GDAL references
     :param coh_type: Set 'L' for look based coherence and 'E' for ensemble window based
+    :image_date: Image date string (mmddyyyy) for selecting appropriate snow density
     :param apply_masks: Set true for applying layover and forest masks
+    :param lf: Set true to load existing intermediate files
     :return: None
     """
 
     pol_vec = calc_pol_vec_dict()
-    lf = True
     print('Calculating s1, s2 and ifg ...')
     s1_vol, s2_vol, ifg_vol = calc_interferogram(image_dict, pol_vec['HV'], apply_masks=apply_masks,
                                                  outfile='Vol', verbose=False, load_files=lf)
@@ -707,12 +723,12 @@ def senstivity_analysis(image_dict, coh_type='L', apply_masks=True):
     # clooks = [3, 5, 6, 7, 9, 11]
     clooks = [3]
     cwindows = {'E': cw.copy(), 'L': clooks}
-    eta_values = np.arange(0, 1, 0.05)
-    # eta_values = [0.65]
+    # eta_values = np.arange(0, 1, 0.05)
+    eta_values = [0.65]
     coherence_threshold = [0.6]
     cval = True
-    wf = False
-    scale_factor = 5
+    wf = True
+    scale_factor = 1
     lia_file = image_dict['LIA']
 
     outfile = open('test_eta.csv', 'a+')
@@ -730,9 +746,9 @@ def senstivity_analysis(image_dict, coh_type='L', apply_masks=True):
                                         verbose=False, wf=wf, load_file=lf)
         print('Computing vertical wavenumber ...')
         kz = compute_vertical_wavenumber(lia_file, scale_factor=scale_factor, outfile='Wavenumber',
-                                         wsize=(10, 10), verbose=False, wf=wf, load_file=lf)
+                                         wsize=(10, 10), verbose=False, wf=wf, load_file=lf, image_date=image_date)
         wstr1 = str(wsize1)
-        for eta in eta_values[1:]:
+        for eta in eta_values:
             for ct in coherence_threshold:
                 print('Computing snow depth ...')
                 snow_depth = calc_snow_depth_hybrid(tmat_vol, ground_phase, kz, img_file=lia_file, eta=eta,
@@ -742,7 +758,7 @@ def senstivity_analysis(image_dict, coh_type='L', apply_masks=True):
                     print('Ensemble averaging snow depth ...')
                     avg_sd = get_ensemble_avg(snow_depth, (ws1, ws2), image_file=lia_file, outfile='Avg_SD_47',
                                               verbose=False, wf=wf)
-                    swe = get_total_swe(avg_sd, density=STANDING_SNOW_DENSITY, img_file=lia_file)
+                    swe = get_total_swe(avg_sd, density=STANDING_SNOW_DENSITY[image_date], img_file=lia_file)
                     vr = check_values(avg_sd, lia_file, DHUNDI_COORDS)
                     vr_str = ' '.join([str(r) for r in vr])
                     wstr2 = '(' + str(wsize2[0]) + ',' + str(wsize2[1]) + ')'
@@ -755,6 +771,7 @@ def senstivity_analysis(image_dict, coh_type='L', apply_masks=True):
     outfile.close()
 
 
-image_dict = read_images('../THESIS/Thesis_Files/Polinsar/Clipped_Tifs')
+image_dict = read_images('Data/12292015/Clipped')
 print('Images loaded...\n')
-senstivity_analysis(image_dict, coh_type='L')
+image_date = '12292015'
+senstivity_analysis(image_dict, coh_type='L', image_date=image_date)
