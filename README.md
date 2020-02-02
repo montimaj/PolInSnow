@@ -1,6 +1,9 @@
 # PolInSnow
 Standing snow depth estimation using PolInSAR. 
 
+Note: The data files are too large for Github!
+
+
 Preprint: https://doi.org/10.31223/osf.io/6v4h3
 
 Thesis: https://library.itc.utwente.nl/papers_2019/msc/gfm/majumdar.pdf
