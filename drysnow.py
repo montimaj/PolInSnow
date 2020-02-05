@@ -21,14 +21,14 @@ MEAN_INC_TSX = {'12292015': (33.07475662231445 + 34.60667610168457) / 2.,
 
 ACQUISITION_ORIENTATION = {'12292015': 'ASC', '01082016': 'DESC', '01092016': 'ASC', '01192016': 'DESC',
                            '01202016': 'ASC', '01302016': 'DESC'}
-VERTICAL_WAVENUMBER_SCALE_FACTOR = {'ASC': 50, 'DESC': 5}
+VERTICAL_WAVENUMBER_SCALE_FACTOR = {'ASC': 3, 'DESC': 5}
 WAVELENGTH = 3.10880853  # cm
 HOA = {'12292015': 1854, '01082016': 6318, '01092016': 1761, '01192016': 6334, '01202016': 1753, '01302016': 6202}  # cm
 # BPERP = 9634  # cm
 NO_DATA_VALUE = -32768
 STANDING_SNOW_DENSITY = {'12292015': 0.429, '01082016': 0.315, '01092016': 0.294, '01192016': 0.347, '01202016': 0.322,
                          '01302016': 0.210}  # g/cm^3
-STANDING_SNOW_DEPTH = {'12292015': 36.80, '01082016': 54.90, '01092016': 61.80, '01192016': 42.80, '01202016': 44.60,
+STANDING_SNOW_DEPTH = {'12292015': 36.70, '01082016': 54.90, '01092016': 56.00, '01192016': 42.80, '01202016': 42.80,
                        '01302016': 70.00}  # cm
 DHUNDI_COORDS = (700089.771, 3581794.5556)  # UTM 43N
 
@@ -712,11 +712,12 @@ def senstivity_analysis(image_dict, coh_type='L', image_date='12292015', apply_m
     """
 
     pol_vec = calc_pol_vec_dict()
+    lf = True
     print('Calculating s1, s2 and ifg ...')
     s1_vol, s2_vol, ifg_vol = calc_interferogram(image_dict, pol_vec['HV'], apply_masks=apply_masks,
-                                                 outfile='Vol', verbose=False, load_files=False)
+                                                 outfile='Vol', verbose=False, load_files=lf)
     s1_surf, s2_surf, ifg_surf = calc_interferogram(image_dict, pol_vec['HH-VV'], apply_masks=apply_masks,
-                                                    outfile='Surf', verbose=False, load_files=False)
+                                                    outfile='Surf', verbose=False, load_files=lf)
     print('Creating senstivity parameters ...')
     # wrange = range(45, 66, 2)
     # ewindows = [(i, j) for i, j in zip(wrange, wrange)]
@@ -729,27 +730,28 @@ def senstivity_analysis(image_dict, coh_type='L', image_date='12292015', apply_m
     cwindows = {'E': cw.copy(), 'L': clooks}
     # eta_values = np.arange(0, 1, 0.05)
     eta_values = [0.65]
-    coherence_threshold = [0.5]
-    scale_factor = VERTICAL_WAVENUMBER_SCALE_FACTOR[ACQUISITION_ORIENTATION[image_date]]
+    coherence_threshold = [0.6]
+    # scale_factor = VERTICAL_WAVENUMBER_SCALE_FACTOR[ACQUISITION_ORIENTATION[image_date]]
+    scale_factor = 40
     cval = True
     wf = True
 
     lia_file = image_dict['LIA']
     # lf = False
 
-    outfile = open('test_eta.csv', 'a+')
+    outfile = open('SSD_Results.csv', 'a+')
     outfile.write('CWindow Epsilon CThreshold SWindow Mean_SSD(cm) SD_SSD(cm) Mean_SWE(mm) SD_SWE(mm)\n')
     print('Computation started...')
     for wsize1 in cwindows[coh_type]:
         tmat_vol, wstr1 = get_coherence(s1_vol, s2_vol, ifg_vol, outfile='Vol', wsize=wsize1, coh_type=coh_type,
                                         apply_masks=apply_masks, img_dict=image_dict, verbose=False, wf=wf,
-                                        validate=cval, load_file=False)
+                                        validate=cval, load_file=lf)
         tmat_surf, wstr1 = get_coherence(s1_surf, s2_surf, ifg_surf, outfile='Surf', wsize=wsize1, coh_type=coh_type,
                                          apply_masks=apply_masks, img_dict=image_dict, verbose=False, wf=wf,
-                                         validate=cval, load_file=False)
+                                         validate=cval, load_file=lf)
         print('Computing ground phase ...')
         ground_phase = get_ground_phase(tmat_vol, tmat_surf, (10, 10), img_dict=image_dict, apply_masks=apply_masks,
-                                        verbose=False, wf=wf, load_file=False)
+                                        verbose=False, wf=wf, load_file=lf)
         print('Computing vertical wavenumber ...')
         kz = compute_vertical_wavenumber(lia_file, scale_factor=scale_factor, outfile='Wavenumber',
                                          wsize=(10, 10), verbose=False, wf=wf, load_file=False, image_date=image_date)
@@ -762,7 +764,7 @@ def senstivity_analysis(image_dict, coh_type='L', image_date='12292015', apply_m
                 for wsize2 in ewindows:
                     ws1, ws2 = int(wsize2[0] / 2.), int(wsize2[1] / 2.)
                     print('Ensemble averaging snow depth ...')
-                    avg_sd = get_ensemble_avg(snow_depth, (ws1, ws2), image_file=lia_file, outfile='Avg_SD_47',
+                    avg_sd = get_ensemble_avg(snow_depth, (ws1, ws2), image_file=lia_file, outfile='Avg_SD',
                                               verbose=False, wf=wf)
                     swe = get_total_swe(avg_sd, density=STANDING_SNOW_DENSITY[image_date], img_file=lia_file)
                     vr = check_values(avg_sd, lia_file, DHUNDI_COORDS)
@@ -777,7 +779,8 @@ def senstivity_analysis(image_dict, coh_type='L', image_date='12292015', apply_m
     outfile.close()
 
 
-image_dict = read_images('Data/01082016/Clipped')
+image_dict = read_images('Data/12292015/Clipped')
+# image_dict = read_images('Backup/01082016_Old')
 print('Images loaded...\n')
-image_date = '01082016'
+image_date = '12292015'
 senstivity_analysis(image_dict, coh_type='L', image_date=image_date)
