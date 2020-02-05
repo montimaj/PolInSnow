@@ -26,7 +26,7 @@ WAVELENGTH = 3.10880853  # cm
 HOA = {'12292015': 1854, '01082016': 6318, '01092016': 1761, '01192016': 6334, '01202016': 1753, '01302016': 6202}  # cm
 # BPERP = 9634  # cm
 NO_DATA_VALUE = -32768
-STANDING_SNOW_DENSITY = {'12292015': 0.429, '01082016': 0.315, '01092016': 0.294, '01192016': 0.347, '01202016': 0.322,
+STANDING_SNOW_DENSITY = {'12292015': 0.382, '01082016': 0.315, '01092016': 0.304, '01192016': 0.347, '01202016': 0.338,
                          '01302016': 0.210}  # g/cm^3
 STANDING_SNOW_DEPTH = {'12292015': 36.70, '01082016': 54.90, '01092016': 56.00, '01192016': 42.80, '01202016': 42.80,
                        '01302016': 70.00}  # cm
@@ -414,7 +414,7 @@ def get_ensemble_window(image_arr, index, wsize):
 
 
 def get_ensemble_avg(image_arr, wsize, image_file, outfile, stat='mean', scale_factor=None,
-                     verbose=True, wf=False, is_complex=False):
+                     verbose=True, wf=False, is_complex=False, load_file=False):
     """
     Perform Ensemble Filtering based on mean, median or maximum
     :param image_arr: Image array to filter
@@ -426,31 +426,34 @@ def get_ensemble_avg(image_arr, wsize, image_file, outfile, stat='mean', scale_f
     :param verbose: Set true for detailed logs
     :param wf: Set true to save intermediate results
     :param is_complex: Set true for complex values
+    :param load_file: Set true to load an earlier npy file
     :return: Ensemble filtered array
     """
 
-    dt = np.float32
-    if is_complex:
-        dt = np.complex
-    emat = np.full_like(image_arr, np.nan, dtype=dt)
-    for index, value in np.ndenumerate(image_arr):
-        if not np.isnan(value):
-            ensemble_window = get_ensemble_window(image_arr, index, wsize)
-            if stat == 'mean':
-                emat[index] = np.nanmean(ensemble_window)
-            elif stat == 'med':
-                emat[index] = np.nanmedian(ensemble_window)
-            elif stat == 'max':
-                emat[index] = np.nanmax(ensemble_window)
-            if scale_factor:
-                emat[index] *= scale_factor
-            if verbose:
-                print(index, emat[index])
-    if wf:
-        outfile = 'Out/' + outfile
-        np.save(outfile, emat)
-        write_file(emat.copy(), image_file, outfile, is_complex=is_complex)
-    return emat
+    if not load_file:
+        dt = np.float32
+        if is_complex:
+            dt = np.complex
+        emat = np.full_like(image_arr, np.nan, dtype=dt)
+        for index, value in np.ndenumerate(image_arr):
+            if not np.isnan(value):
+                ensemble_window = get_ensemble_window(image_arr, index, wsize)
+                if stat == 'mean':
+                    emat[index] = np.nanmean(ensemble_window)
+                elif stat == 'med':
+                    emat[index] = np.nanmedian(ensemble_window)
+                elif stat == 'max':
+                    emat[index] = np.nanmax(ensemble_window)
+                if scale_factor:
+                    emat[index] *= scale_factor
+                if verbose:
+                    print(index, emat[index])
+        if wf:
+            outfile = 'Out/' + outfile
+            np.save(outfile, emat)
+            write_file(emat.copy(), image_file, outfile, is_complex=is_complex)
+        return emat
+    return np.load('Out/' + outfile + '.npy')
 
 
 def get_ground_phase(tmat_vol, tmat_surf, wsize, img_dict, apply_masks, verbose=True, wf=True, load_file=False):
@@ -732,14 +735,14 @@ def senstivity_analysis(image_dict, coh_type='L', image_date='12292015', apply_m
     eta_values = [0.65]
     coherence_threshold = [0.6]
     # scale_factor = VERTICAL_WAVENUMBER_SCALE_FACTOR[ACQUISITION_ORIENTATION[image_date]]
-    scale_factor = 40
+    scale_factor = 4
     cval = True
     wf = True
 
     lia_file = image_dict['LIA']
     # lf = False
 
-    outfile = open('SSD_Results.csv', 'a+')
+    outfile = open('SSD_Results_New2.csv', 'a+')
     outfile.write('CWindow Epsilon CThreshold SWindow Mean_SSD(cm) SD_SSD(cm) Mean_SWE(mm) SD_SWE(mm)\n')
     print('Computation started...')
     for wsize1 in cwindows[coh_type]:
@@ -765,7 +768,7 @@ def senstivity_analysis(image_dict, coh_type='L', image_date='12292015', apply_m
                     ws1, ws2 = int(wsize2[0] / 2.), int(wsize2[1] / 2.)
                     print('Ensemble averaging snow depth ...')
                     avg_sd = get_ensemble_avg(snow_depth, (ws1, ws2), image_file=lia_file, outfile='Avg_SD',
-                                              verbose=False, wf=wf)
+                                              verbose=False, wf=wf, load_file=False)
                     swe = get_total_swe(avg_sd, density=STANDING_SNOW_DENSITY[image_date], img_file=lia_file)
                     vr = check_values(avg_sd, lia_file, DHUNDI_COORDS)
                     vr_str = ' '.join([str(r) for r in vr])
@@ -779,8 +782,7 @@ def senstivity_analysis(image_dict, coh_type='L', image_date='12292015', apply_m
     outfile.close()
 
 
-image_dict = read_images('Data/12292015/Clipped')
-# image_dict = read_images('Backup/01082016_Old')
+image_dict = read_images('Data/01202016/Clipped')
 print('Images loaded...\n')
-image_date = '12292015'
+image_date = '01202016'
 senstivity_analysis(image_dict, coh_type='L', image_date=image_date)
