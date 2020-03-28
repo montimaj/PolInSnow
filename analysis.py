@@ -382,10 +382,10 @@ def correct_wishart_file(img_dict, check_forests=False):
     if check_forests:
         forest_arr = get_image_array(img_dict['FOREST'])
     print('\nWishart_Jan')
-    total_pixels = get_wishart_class_stats(w1_arr, layover_arr, forest_arr, outfile='Out/WJan_Quad', img_file=w1_file,
+    total_pixels = get_wishart_class_stats(w1_arr, layover_arr, forest_arr, outfile='Out_CE3/WJan_Quad', img_file=w1_file,
                                            check_forests=check_forests)
     # print('\nWishart_June')
-    # get_wishart_class_stats(w2_arr, layover_arr, forest_arr, outfile='Out/WJun', img_file=w1_file,
+    # get_wishart_class_stats(w2_arr, layover_arr, forest_arr, outfile='Out_CE3/WJun', img_file=w1_file,
     #                        check_forests=check_forests, total_pixels=total_pixels)
 
 

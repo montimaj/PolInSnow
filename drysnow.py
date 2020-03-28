@@ -1,9 +1,10 @@
 import gdal
 import numpy as np
-import glob
 import os
 import scipy.optimize as scp
 import affine
+
+from glob import glob
 
 MEAN_INC_TDX = {'12292015': (33.04875564575195 + 34.621795654296875) / 2.,
                 '01082016': (38.07691192626953 + 39.37236785888672) / 2.,
@@ -33,19 +34,31 @@ STANDING_SNOW_DEPTH = {'12292015': 36.70, '01082016': 54.90, '01092016': 56.00, 
 DHUNDI_COORDS = (700089.771, 3581794.5556)  # UTM 43N
 
 
-def read_images(path, imgformat='*.tif'):
+def read_images(image_path, common_path, imgformat='*.tif'):
     """
     Read images in a directory
-    :param path: Directory path
+    :param image_path: Directory path to date specific polarization files
+    :param common_path: Directory path to common files
     :param imgformat: Type of image file
     :return: Dictionary of GDAL Opened references/ pointers to specific files
     """
 
     print("Reading images...")
     images = {}
-    files = os.path.join(path, imgformat)
-    for file in glob.glob(files):
-        key = file[file.rfind('/') + 1: file.rfind('.')]
+    image_files = os.path.join(image_path, imgformat)
+    common_files = os.path.join(common_path, imgformat)
+    os_sep = image_path.rfind(os.sep)
+    if os_sep == -1:
+        os_sep = image_path.rfind('/')
+    image_date = image_path[os_sep + 1:]
+    layover_file = os.path.join(common_path, ACQUISITION_ORIENTATION[image_date] + os.sep + imgformat)
+    file_list = glob(image_files) + glob(common_files) + glob(layover_file)
+    for file in file_list:
+        print(file)
+        os_sep = file.rfind(os.sep)
+        if os_sep == -1:
+            os_sep = file.rfind('/')
+        key = file[os_sep + 1: file.rfind('.')]
         images[key] = gdal.Open(file)
     print("Finished reading")
     return images
@@ -344,8 +357,9 @@ def calc_coherence_mat(s1, s2, ifg, img_dict, outfile, num_looks=10, apply_masks
     else:
         tmat = nanfix_tmat_arr(tmat, lia_arr, apply_masks=False)
     if wf:
-        np.save('Out/Coherence_' + outfile, tmat)
-        write_file(tmat.copy(), img_dict['LIA'], 'Out/Coherence_' + outfile)
+        outfile = 'Out/Coherence_' + outfile
+        np.save(outfile, tmat)
+        write_file(tmat.copy(), img_dict['LIA'], outfile)
     return tmat
 
 
@@ -726,21 +740,21 @@ def senstivity_analysis(image_dict, coh_type='L', image_date='12292015', apply_m
     # ewindows = [(i, j) for i, j in zip(wrange, wrange)]
     # clooks = range(2, 21)
     # coherence_threshold = np.round(np.linspace(0.10, 0.90, 17), 2)
-    ewindows = [(57, 57)]
-    cw = [(1, 3)]
+    ewindows = [(5, 5)]
+    cw = [(5, 5)]
     # clooks = [3, 5, 6, 7, 9, 11]
-    clooks = [3]
+    clooks = [5]
     cwindows = {'E': cw.copy(), 'L': clooks}
     # eta_values = np.arange(0, 1, 0.05)
-    eta_values = [0.65]
-    coherence_threshold = [0.6]
+    eta_values = [0.7]
+    coherence_threshold = [0.]
     # scale_factor = VERTICAL_WAVENUMBER_SCALE_FACTOR[ACQUISITION_ORIENTATION[image_date]]
-    scale_factor = 4
+    scale_factor = 1
     cval = True
     wf = True
 
     lia_file = image_dict['LIA']
-    # lf = False
+    lf = False
 
     outfile = open('SSD_Results_New2.csv', 'a+')
     outfile.write('CWindow Epsilon CThreshold SWindow Mean_SSD(cm) SD_SSD(cm) Mean_SWE(mm) SD_SWE(mm)\n')
@@ -753,22 +767,23 @@ def senstivity_analysis(image_dict, coh_type='L', image_date='12292015', apply_m
                                          apply_masks=apply_masks, img_dict=image_dict, verbose=False, wf=wf,
                                          validate=cval, load_file=lf)
         print('Computing ground phase ...')
-        ground_phase = get_ground_phase(tmat_vol, tmat_surf, (10, 10), img_dict=image_dict, apply_masks=apply_masks,
+        ground_phase = get_ground_phase(tmat_vol, tmat_surf, (2, 2), img_dict=image_dict, apply_masks=apply_masks,
                                         verbose=False, wf=wf, load_file=lf)
         print('Computing vertical wavenumber ...')
         kz = compute_vertical_wavenumber(lia_file, scale_factor=scale_factor, outfile='Wavenumber',
-                                         wsize=(10, 10), verbose=False, wf=wf, load_file=False, image_date=image_date)
+                                         wsize=(2, 2), verbose=False, wf=wf, load_file=lf, image_date=image_date)
         wstr1 = str(wsize1)
         for eta in eta_values:
             for ct in coherence_threshold:
                 print('Computing snow depth ...')
                 snow_depth = calc_snow_depth_hybrid(tmat_vol, ground_phase, kz, img_file=lia_file, eta=eta,
-                                                    coherence_threshold=ct, wf=wf, verbose=False, load_file=False)
+                                                    coherence_threshold=ct, wf=wf, verbose=False, load_file=lf)
                 for wsize2 in ewindows:
                     ws1, ws2 = int(wsize2[0] / 2.), int(wsize2[1] / 2.)
                     print('Ensemble averaging snow depth ...')
-                    avg_sd = get_ensemble_avg(snow_depth, (ws1, ws2), image_file=lia_file, outfile='Avg_SD',
-                                              verbose=False, wf=wf, load_file=False)
+                    avg_sd = snow_depth
+                    # avg_sd = get_ensemble_avg(snow_depth, (ws1, ws2), image_file=lia_file, outfile='Avg_SD',
+                    #                          verbose=False, wf=wf, load_file=False)
                     swe = get_total_swe(avg_sd, density=STANDING_SNOW_DENSITY[image_date], img_file=lia_file)
                     vr = check_values(avg_sd, lia_file, DHUNDI_COORDS)
                     vr_str = ' '.join([str(r) for r in vr])
@@ -782,7 +797,23 @@ def senstivity_analysis(image_dict, coh_type='L', image_date='12292015', apply_m
     outfile.close()
 
 
-image_dict = read_images('Data/01202016/Clipped')
+def makedirs(directory_list):
+    """
+    Create directory for storing files
+    :param directory_list: List of directories to create
+    :return: None
+    """
+
+    for directory_name in directory_list:
+        if not os.path.exists(directory_name):
+            os.makedirs(directory_name)
+
+
+image_date = '01082016'
+base_path = 'Project_Data'
+image_path = os.path.join(base_path, image_date)
+common_path = os.path.join(base_path, 'Common')
+image_dict = read_images(image_path=image_path, common_path=common_path)
+makedirs(['Out'])
 print('Images loaded...\n')
-image_date = '01202016'
-senstivity_analysis(image_dict, coh_type='L', image_date=image_date)
+senstivity_analysis(image_dict, coh_type='E', image_date=image_date)
