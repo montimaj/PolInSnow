@@ -748,7 +748,8 @@ def senstivity_analysis(image_dict, outdir, coh_type='L', image_date='12292015',
     s1_surf, s2_surf, ifg_surf = calc_interferogram(image_dict, pol_vec['HH-VV'], apply_masks=apply_masks,
                                                     outfile='Surf', verbose=False, load_files=lf, outdir=ifg_dir)
     print('Creating senstivity parameters ...')
-    cw = [(35, 35)]
+    cw = [(35, 35), (5, 5), (15, 15), (25, 25), (45, 45)]
+    # cw = [(35, 35), (5, 5), (25, 25)]
     clooks = [5]
     cwindows = {'E': cw.copy(), 'L': clooks}
     eta_values = [0.65]
@@ -758,8 +759,9 @@ def senstivity_analysis(image_dict, outdir, coh_type='L', image_date='12292015',
     wf = True
     lia_file = image_dict['LIA']
 
-    outfile = open('SSD_Results_New2.csv', 'a+')
-    outfile.write('CWindow Epsilon CThreshold Mean_SSD(cm) SD_SSD(cm) Mean_SWE(mm) SD_SWE(mm)\n')
+    outfile = open('SSD_Results_New.csv', 'a+')
+    if not outfile.read():
+        outfile.write('Date CWindow Epsilon CThreshold Mean_SSD(cm) SD_SSD(cm) Mean_SWE(mm) SD_SWE(mm)\n')
     print('Computation started...')
     for wsize in cwindows[coh_type]:
         output_dir = 'C' + coh_type + '_' + str(wsize)
@@ -801,7 +803,7 @@ def senstivity_analysis(image_dict, outdir, coh_type='L', image_date='12292015',
                 vr_str = ' '.join([str(r) for r in vr])
                 vr = check_values(swe, lia_file, DHUNDI_COORDS)
                 vr_str2 = ' '.join([str(r) for r in vr])
-                final_str = wstr + ' ' + str(eta) + ' ' + str(ct) + ' ' + vr_str + ' ' + vr_str2 + '\n'
+                final_str = image_date + ' ' + wstr + ' ' + str(eta) + ' ' + str(ct) + ' ' + vr_str + ' ' + vr_str2 + '\n'
                 print(final_str)
                 outfile.write(final_str)
     outfile.close()
