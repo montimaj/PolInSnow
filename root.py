@@ -7,7 +7,7 @@ def mysinc1(x, arg):
     """
     Custom Normalised SINC function for root finding in the hybrid height inversion model
     :param x: SINC argument
-    :param c: Constant
+    :param arg: Constant
     :return: SINC(x) - c
     """
 
@@ -18,7 +18,7 @@ def mysinc2(x, arg):
     """
     Custom Traditional SINC function for root finding in the hybrid height inversion model
     :param x: SINC argument
-    :param c: Constant
+    :param arg: Constant
     :return: SINC(x) - c
     """
 
@@ -65,4 +65,4 @@ for t in tests:
     sinc2_inv.append(np.round(scp.newton(mysinc2, args=(val2,), x0=x2), 3))
 df = pd.DataFrame({'test_val': tests, 'sinc1': sinc1, 'sinc2': sinc2, 'sinc1_inv': sinc1_inv, 'sinc2_inv': sinc2_inv,
                    'sinc1_ainv': sinc3_inv, 'sinc2_ainv': sinc4_inv})
-df.to_csv(r'D:\SnowSAR\Snow_Analysis\SSD_Sensitivity\root_results.csv', index=False)
+df.to_csv('root_results.csv', index=False)

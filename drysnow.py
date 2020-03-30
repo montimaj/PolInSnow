@@ -727,14 +727,16 @@ def compute_vertical_wavenumber(lia_file, wsize, outdir, outfile, scale_factor, 
     return kz
 
 
-def senstivity_analysis(image_dict, outdir, coh_type='L', image_date='12292015', apply_masks=True, lf=False):
+def senstivity_analysis(image_dict, outdir, cw, coh_type='L', image_date='12292015', apply_masks=True, lf=False):
     """
     Main caller function for sensitivity analysis
     :param image_dict: Image dictionary containing GDAL references
     :param outdir: Output directory to store intermediate files
+    :param cw: Coherence window for ensemble averaging (coh_type should be 'L')
     :param coh_type: Set 'L' for look based coherence and 'E' for ensemble window based
     :image_date: Image date string (mmddyyyy) for selecting appropriate snow density
     :param apply_masks: Set true for applying layover and forest masks
+    :param lf: Load existing files
     :return: None
     """
 
@@ -742,15 +744,12 @@ def senstivity_analysis(image_dict, outdir, coh_type='L', image_date='12292015',
     print('Calculating s1, s2 and ifg ...')
     ifg_dir = os.path.join(outdir, 'Common')
     makedirs([ifg_dir])
-    lf = False
     s1_vol, s2_vol, ifg_vol = calc_interferogram(image_dict, pol_vec['HV'], apply_masks=apply_masks,
                                                  outfile='Vol', verbose=False, load_files=lf, outdir=ifg_dir)
     s1_surf, s2_surf, ifg_surf = calc_interferogram(image_dict, pol_vec['HH-VV'], apply_masks=apply_masks,
                                                     outfile='Surf', verbose=False, load_files=lf, outdir=ifg_dir)
     print('Creating senstivity parameters ...')
-    cw = [(35, 35), (5, 5), (15, 15), (25, 25), (45, 45)]
-    # cw = [(35, 35), (5, 5), (25, 25)]
-    clooks = [5]
+    clooks = [3]
     cwindows = {'E': cw.copy(), 'L': clooks}
     eta_values = [0.65]
     coherence_threshold = [0]
@@ -821,11 +820,20 @@ def makedirs(directory_list):
             os.makedirs(directory_name)
 
 
-image_date = '01192016'
-base_path = 'Project_Data'
-image_path = os.path.join(base_path, image_date)
-common_path = os.path.join(base_path, 'Common')
-output_path = os.path.join('Outputs', image_date)
-image_dict = read_images(image_path=image_path, common_path=common_path)
-print('Images loaded...\n')
-senstivity_analysis(image_dict, coh_type='E', image_date=image_date, outdir=output_path)
+image_dates = ACQUISITION_ORIENTATION.keys()
+completed = []
+for image_date in image_dates:
+    if image_date not in completed:
+        print('Working with', image_date, 'data...\n')
+        base_path = 'Project_Data'
+        image_path = os.path.join(base_path, image_date)
+        common_path = os.path.join(base_path, 'Common')
+        output_path = os.path.join('Outputs', image_date)
+        image_dict = read_images(image_path=image_path, common_path=common_path)
+        print('Images loaded...\n')
+        cw = [(35, 35), (5, 5), (15, 15), (25, 25), (45, 45), (55, 55), (65, 65)]
+        if image_date == '01082016':
+            cw = [(15, 15), (45, 45), (55, 55), (65, 65)]
+        elif image_date == '01192016':
+            cw = [(55, 55), (65, 65)]
+        senstivity_analysis(image_dict, cw=cw, coh_type='E', image_date=image_date, outdir=output_path, lf=False)
