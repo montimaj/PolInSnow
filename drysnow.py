@@ -240,7 +240,7 @@ def calc_interferogram(image_dict, pol_vec, outdir, outfile, apply_masks=True, v
     else:
         outfile += '.npy'
         s1, s2, ifg = np.load(os.path.join(outdir, 'S1_' + outfile)), np.load(os.path.join(outdir, 'S2_' + outfile)), \
-                      np.load(os.path.join(outdir, 'Ifg_' + outfile))
+                      np.load(os.path.join(outdir, 'Ifg__' + outfile))
     return s1, s2, ifg
 
 
@@ -727,16 +727,19 @@ def compute_vertical_wavenumber(lia_file, wsize, outdir, outfile, scale_factor, 
     return kz
 
 
-def senstivity_analysis(image_dict, outdir, cw, coh_type='L', image_date='12292015', apply_masks=True, lf=False):
+def senstivity_analysis(image_dict, outdir, cw, coh_type='L', scale_factor=5, image_date='12292015', apply_masks=True,
+                        lf_ifg=False, lf_other=False):
     """
     Main caller function for sensitivity analysis
     :param image_dict: Image dictionary containing GDAL references
     :param outdir: Output directory to store intermediate files
     :param cw: Coherence window for ensemble averaging (coh_type should be 'L')
     :param coh_type: Set 'L' for look based coherence and 'E' for ensemble window based
+    :param scale_factor: Vertical wavenumber scale factor
     :image_date: Image date string (mmddyyyy) for selecting appropriate snow density
     :param apply_masks: Set true for applying layover and forest masks
-    :param lf: Load existing files
+    :param lf_ifg: Load existing files related to the PolInSAR interferogram
+    :param lf_other: Load other existing files such as coherence, ground phase, etc.
     :return: None
     """
 
@@ -744,6 +747,7 @@ def senstivity_analysis(image_dict, outdir, cw, coh_type='L', image_date='122920
     print('Calculating s1, s2 and ifg ...')
     ifg_dir = os.path.join(outdir, 'Common')
     makedirs([ifg_dir])
+    lf = lf_ifg
     s1_vol, s2_vol, ifg_vol = calc_interferogram(image_dict, pol_vec['HV'], apply_masks=apply_masks,
                                                  outfile='Vol', verbose=False, load_files=lf, outdir=ifg_dir)
     s1_surf, s2_surf, ifg_surf = calc_interferogram(image_dict, pol_vec['HH-VV'], apply_masks=apply_masks,
@@ -753,7 +757,6 @@ def senstivity_analysis(image_dict, outdir, cw, coh_type='L', image_date='122920
     cwindows = {'E': cw.copy(), 'L': clooks}
     eta_values = [0.65]
     coherence_threshold = [0]
-    scale_factor = 5
     cval = True
     wf = True
     lia_file = image_dict['LIA']
@@ -762,6 +765,7 @@ def senstivity_analysis(image_dict, outdir, cw, coh_type='L', image_date='122920
     if not outfile.read():
         outfile.write('Date CWindow Epsilon CThreshold Mean_SSD(cm) SD_SSD(cm) Mean_SWE(mm) SD_SWE(mm)\n')
     print('Computation started...')
+    lf = lf_other
     for wsize in cwindows[coh_type]:
         output_dir = 'C' + coh_type + '_' + str(wsize)
         if isinstance(wsize, tuple):
@@ -831,9 +835,10 @@ for image_date in image_dates:
         output_path = os.path.join('Outputs', image_date)
         image_dict = read_images(image_path=image_path, common_path=common_path)
         print('Images loaded...\n')
-        cw = [(35, 35), (5, 5), (15, 15), (25, 25), (45, 45), (55, 55), (65, 65)]
-        if image_date == '01082016':
-            cw = [(15, 15), (45, 45), (55, 55), (65, 65)]
-        elif image_date == '01192016':
-            cw = [(55, 55), (65, 65)]
-        senstivity_analysis(image_dict, cw=cw, coh_type='E', image_date=image_date, outdir=output_path, lf=False)
+        # cw = [(35, 35), (5, 5), (15, 15), (25, 25), (45, 45), (55, 55), (57, 57), (65, 65)]
+        cw = [(57, 57)]
+        scale_factor = 5
+        if image_date == '12292015':
+            scale_factor = 50
+        senstivity_analysis(image_dict, cw=cw, coh_type='E', scale_factor=scale_factor, image_date=image_date,
+                            outdir=output_path, lf_ifg=True)
