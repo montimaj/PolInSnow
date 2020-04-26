@@ -22,7 +22,7 @@ MEAN_INC_TSX = {'12292015': (33.07475662231445 + 34.60667610168457) / 2.,
 
 ACQUISITION_ORIENTATION = {'12292015': 'ASC', '01082016': 'DESC', '01092016': 'ASC', '01192016': 'DESC',
                            '01202016': 'ASC', '01302016': 'DESC'}
-VERTICAL_WAVENUMBER_SCALE_FACTOR = {'ASC': 3, 'DESC': 5}
+VERTICAL_WAVENUMBER_SCALE_FACTOR = {'ASC': 5, 'DESC': 18}
 WAVELENGTH = 3.10880853  # cm
 HOA = {'12292015': 1854, '01082016': 6318, '01092016': 1761, '01192016': 6334, '01202016': 1753, '01302016': 6202}  # cm
 # BPERP = 9634  # cm
@@ -538,8 +538,8 @@ def calc_sinc_inv(val):
     return sinc_inv_approx
 
 
-def calc_snow_depth_hybrid(tmat_vol, ground_phase, kz, img_file, outdir, eta=0.4, coherence_threshold=0.5, max_sd=100,
-                           wf=False, load_file=False):
+def calc_snow_depth_hybrid(tmat_vol, ground_phase, kz, img_file, outdir, eta=0.4, coherence_threshold=0.5, wf=False,
+                           load_file=False):
     """
     Calculate snow depth using Pol-InSAR based hybrid height inversion model
     :param tmat_vol: Volume coherence array
@@ -549,7 +549,6 @@ def calc_snow_depth_hybrid(tmat_vol, ground_phase, kz, img_file, outdir, eta=0.4
     :param outdir: Output directory
     :param eta: Snow depth scaling factor (0<=eta<=1)
     :param coherence_threshold: Coherence threshold (0<=coherence_threshold<=1)
-    :param max_sd: Maximum snow depth (cm) in the study area (X-band won't penetrate beyond 100 cm)
     :param wf: Set true to save intermediate results
     :param load_file: Set true to load existing numpy binary and skip computation
     :return: Snow depth array
@@ -562,7 +561,6 @@ def calc_snow_depth_hybrid(tmat_vol, ground_phase, kz, img_file, outdir, eta=0.4
         kv = np.abs(k1 + k2)
         snow_depth = kv / kz
         snow_depth[abs_tvol < coherence_threshold] = 0
-        snow_depth %= max_sd
         if wf:
             np.save(os.path.join(outdir, 'KV'), kv)
             np.save(os.path.join(outdir, 'Snow_Depth'), snow_depth)
@@ -703,34 +701,47 @@ def get_coherence(s1, s2, ifg, wsize, img_dict, apply_masks, coh_type, verbose, 
     return tmat, wstr
 
 
-def compute_vertical_wavenumber(lia_file, image_date, is_single_pass=True, verbose=True):
+def compute_vertical_wavenumber(lia_file, wsize, outdir, outfile, scale_factor, image_date, is_single_pass=True,
+                                verbose=True, wf=True, load_file=False):
     """
     Calculate vertical wavenumber
     :param lia_file: Local incidence angle GDAL reference
+    :param wsize: Ensemble window size (should be half of desired window size)
+    :param outdir: Output directory
+    :param outfile: Output file path
+    :param scale_factor: Vertical wavenumber scale factor (real valued, shoud be chosen according to the study area)
     :param image_date: Image acquisition date string (mmddyyyy) for extracting correct incidence angles
     :param is_single_pass: Set true for single-pass acquisitions
     :param verbose: Set true for detailed logs
+    :param image_date: Image acquisition date string (mmddyyyy) for extracting correct incidence angles
+    :param wf: Set true to write intermediate files
+    :param load_file: Set true to load existing numpy binary and skip computation
     :return: Vertical wavenumber array
-
     """
-    lia = get_image_array(lia_file)
-    del_theta = np.abs(MEAN_INC_TDX[image_date] - MEAN_INC_TSX[image_date])
-    m = 2
-    if is_single_pass:
-        m = 1
-    kz = np.abs(m * 2 * np.pi * np.deg2rad(del_theta) / (WAVELENGTH * np.sin(np.deg2rad(lia))))
-    if verbose:
-        print('Mean kz:', np.nanmean(kz), 'Min kz:', np.nanmin(kz), 'Max kz:', np.nanmax(kz))
+
+    if not load_file:
+        lia = get_image_array(lia_file)
+        del_theta = np.abs(MEAN_INC_TDX[image_date] - MEAN_INC_TSX[image_date])
+        m = 4
+        if is_single_pass:
+            m = 2
+        kz = scale_factor * m * np.pi * np.deg2rad(del_theta) / (WAVELENGTH * np.sin(np.deg2rad(lia)))
+        # kz = get_ensemble_avg(kz, wsize=wsize, image_file=lia_file, scale_factor=scale_factor, outfile=outfile,
+        #                       wf=wf, verbose=verbose, outdir=outdir)
+    else:
+        kz = np.load(os.path.join(outdir, 'Wavenumber.npy'))
+    print('Mean kz:', np.nanmean(kz), 'Min kz:', np.nanmin(kz), 'Max kz:', np.nanmax(kz))
     return kz
 
 
-def senstivity_analysis(image_dict, outdir, cw, coh_type='L', image_date='12292015', apply_masks=True, lf_ifg=False,
-                        lf_other=False):
+def senstivity_analysis(image_dict, outdir, cw, scale_factor, coh_type='L', image_date='12292015', apply_masks=True,
+                        lf_ifg=False, lf_other=False):
     """
     Main caller function for sensitivity analysis
     :param image_dict: Image dictionary containing GDAL references
     :param outdir: Output directory to store intermediate files
     :param cw: Coherence window for ensemble averaging (coh_type should be 'L')
+    :param scale_factor: Vertical wavenumber scale factor
     :param coh_type: Set 'L' for look based coherence and 'E' for ensemble window based
     :image_date: Image date string (mmddyyyy) for selecting appropriate snow density
     :param apply_masks: Set true for applying layover and forest masks
@@ -784,7 +795,9 @@ def senstivity_analysis(image_dict, outdir, cw, coh_type='L', image_date='122920
         ground_phase = get_ground_phase(tmat_vol, tmat_surf, wsize_gp_kz, img_dict=image_dict, apply_masks=apply_masks,
                                         verbose=False, wf=wf, load_file=lf_other, outdir=output_dir)
         print('Computing vertical wavenumber ...')
-        kz = compute_vertical_wavenumber(lia_file, verbose=True, image_date=image_date)
+        kz = compute_vertical_wavenumber(lia_file, scale_factor=scale_factor, outfile='Wavenumber', wsize=wsize_gp_kz,
+                                         verbose=False, wf=wf, load_file=False, image_date=image_date,
+                                         outdir=output_dir)
         wstr = str(wsize)
         for eta in eta_values:
             for ct in coherence_threshold:
@@ -817,10 +830,10 @@ def makedirs(directory_list):
             os.makedirs(directory_name)
 
 
-image_dates = ACQUISITION_ORIENTATION.keys()
+image_dates = list(ACQUISITION_ORIENTATION.keys())
 completed = []
 GDAL_PATH = 'C:/OSGeo4W64/'
-for image_date in image_dates:
+for image_date in image_dates[-1::-1]:
     if image_date not in completed:
         print('Working with', image_date, 'data...\n')
         base_path = 'Project_Data'
@@ -829,6 +842,7 @@ for image_date in image_dates:
         output_path = os.path.join('Outputs', image_date)
         image_dict = read_images(image_path=image_path, common_path=common_path)
         print('Images loaded...\n')
-        cw = [(35, 35), (5, 5), (15, 15), (25, 25), (45, 45), (55, 55), (57, 57), (65, 65)]
+        cw = [(5, 5), (15, 15), (25, 25), (35, 35), (45, 45), (55, 55), (65, 65)]
+        scale_factor = VERTICAL_WAVENUMBER_SCALE_FACTOR[ACQUISITION_ORIENTATION[image_date]]
         senstivity_analysis(image_dict, cw=cw, coh_type='E', image_date=image_date, outdir=output_path, lf_ifg=True,
-                            lf_other=True)
+                            lf_other=True, scale_factor=scale_factor)
