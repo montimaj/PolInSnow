@@ -645,8 +645,8 @@ def get_coherence(s1, s2, ifg, wsize, img_dict, apply_masks, verbose, wf, outdir
     return tmat, cr
 
 
-def compute_vertical_wavenumber(lia_file, outdir, scale_factor, image_date, is_single_pass=True, wf=False, verbose=True,
-                                load_file=False, ensemble_avg=True, **kwargs):
+def compute_vertical_wavenumber(lia_file, outdir, image_date, scale_factor=1, is_single_pass=True, wf=False,
+                                verbose=True, load_file=False, ensemble_avg=True, **kwargs):
     """
     Calculate vertical wavenumber
     :param lia_file: Local incidence angle GDAL reference
@@ -654,6 +654,7 @@ def compute_vertical_wavenumber(lia_file, outdir, scale_factor, image_date, is_s
     :param scale_factor: Vertical wavenumber scale factor (real valued, shoud be chosen according to the study area)
     :param image_date: Image acquisition date string (mmddyyyy) for extracting correct incidence angles
     :param is_single_pass: Set true for single-pass acquisitions
+    :param wf: Set True to write intermediate files
     :param verbose: Set true for detailed logs
     :param image_date: Image acquisition date string (mmddyyyy) for extracting correct incidence angles
     :param load_file: Set true to load existing numpy binary and skip computation
@@ -671,7 +672,7 @@ def compute_vertical_wavenumber(lia_file, outdir, scale_factor, image_date, is_s
             m = 2
         kz = scale_factor * m * np.pi * np.deg2rad(del_theta) / (WAVELENGTH * np.sin(np.deg2rad(lia)))
         if wf:
-            np.save(os.path.join(outdir, 'Wavenumber.npy'))
+            np.save(os.path.join(outdir, 'Wavenumber.npy'), kz)
         if verbose:
             print('Mean kz:', np.nanmean(kz), 'Min kz:', np.nanmin(kz), 'Max kz:', np.nanmax(kz))
         if ensemble_avg:
@@ -731,17 +732,16 @@ def senstivity_analysis(image_dict, outdir, cwindows, eta_values, ct_values, sca
                                                load_file=lf_other, outdir=output_dir)
         ground_phase = get_ground_phase(tmat_vol, tmat_surf, wsize_gp_kz, img_dict=image_dict, apply_masks=apply_masks,
                                         verbose=verbose, wf=wf, load_file=lf_other, outdir=output_dir)
-        for sf in scale_factors:
-            kz, kz_stats = compute_vertical_wavenumber(lia_file, scale_factor=sf, verbose=verbose, load_file=False,
-                                                       image_date=image_date, outdir=output_dir,
-                                                       ensemble_avg=ensemble_avg, wsize=wsize)
-            for eta in eta_values:
-                for ct in ct_values:
-                    snow_depth, sd_stats = calc_snow_depth_hybrid(tmat_vol, ground_phase, kz, img_file=lia_file, 
-                                                                  eta=eta, coherence_threshold=ct, wf=wf, 
-                                                                  load_file=False, outdir=output_dir, 
-                                                                  ensemble_avg=ensemble_avg, wsize=wsize, 
-                                                                  verbose=verbose)
+        kz, kz_stats = compute_vertical_wavenumber(lia_file, verbose=verbose, load_file=False, image_date=image_date,
+                                                   outdir=output_dir, wf=True, ensemble_avg=ensemble_avg, wsize=wsize)
+        for eta in eta_values:
+            for ct in ct_values:
+                snow_depth, sd_stats = calc_snow_depth_hybrid(tmat_vol, ground_phase, kz, img_file=lia_file, eta=eta,
+                                                              coherence_threshold=ct, wf=wf, load_file=False,
+                                                              outdir=output_dir, ensemble_avg=ensemble_avg, wsize=wsize,
+                                                              verbose=verbose)
+                for sf in scale_factors:
+                    snow_depth /= sf
                     snow_density = STANDING_SNOW_DENSITY[image_date]
                     swe, swe_stats = get_total_swe(snow_depth, density=snow_density, img_file=lia_file,
                                                    outdir=output_dir)
@@ -749,12 +749,12 @@ def senstivity_analysis(image_dict, outdir, cwindows, eta_values, ct_values, sca
                     sswe_actual = ssd_actual * snow_density * 10
                     img_date = pd.to_datetime(image_date, format='%m%d%Y')
                     result_dict = {'Date': [img_date], 'CWindow': [str(wsize)], 'Eta': [eta], 'CT': [ct], 'SF': [sf],
-                                   'Mean_SSD_Est(cm)': [sd_stats[0]], 'SD_SSD_Est(cm)': [sd_stats[1]], 
-                                   'Mean_SSWE_Est(mm)': [swe_stats[0]], 'SD_SSWE_Est(mm)': [swe_stats[1]], 
+                                   'Mean_SSD_Est(cm)': [sd_stats[0] / sf], 'SD_SSD_Est(cm)': [sd_stats[1] / sf],
+                                   'Mean_SSWE_Est(mm)': [swe_stats[0]], 'SD_SSWE_Est(mm)': [swe_stats[1]],
                                    'SSD_Actual(cm)': [ssd_actual], 'SSWE_Actual(mm)': [sswe_actual],
-                                   'Mean_TVOL': [tvol_stats[0]], 'SD_TVOL': [tvol_stats[1]], 
-                                   'Mean_TSURF': [tsurf_stats[0]], 'SD_TSURF': [tsurf_stats[1]], 
-                                   'Mean_KZ': [kz_stats[0]], 'SD_KZ': [kz_stats[1]]}
+                                   'Mean_TVOL': [tvol_stats[0]], 'SD_TVOL': [tvol_stats[1]],
+                                   'Mean_TSURF': [tsurf_stats[0]], 'SD_TSURF': [tsurf_stats[1]],
+                                   'Mean_KZ': [kz_stats[0] / sf], 'SD_KZ': [kz_stats[1] / sf]}
                     print(result_dict)
                     df = pd.DataFrame(data=result_dict)
                     with open('Sensitivity_Results.csv', 'a') as f:
@@ -792,9 +792,9 @@ def run_polinsnow():
             print('Images loaded...\n')
             w = range(5, 66, 10)
             windows = list(zip(w, w))
-            eta_values = np.round(np.arange(0, 1.1, 0.1), 1)
-            ct_values = np.round(np.arange(0, 0.5, 0.1), 1)
-            scale_factors = range(1, 61)
+            eta_values = [0.6]
+            ct_values = [0.]
+            scale_factors = range(1, 21)
             senstivity_analysis(image_dict, cwindows=windows, eta_values=eta_values, ct_values=ct_values, 
                                 scale_factors=scale_factors, image_date=image_date, outdir=output_path, lf_ifg=True, 
                                 lf_other=True, ensemble_avg=True)
