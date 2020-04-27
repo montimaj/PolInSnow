@@ -737,14 +737,14 @@ def senstivity_analysis(image_dict, outdir, cwindows, eta_values, ct_values, sca
         for eta in eta_values:
             for ct in ct_values:
                 snow_depth, sd_stats = calc_snow_depth_hybrid(tmat_vol, ground_phase, kz, img_file=lia_file, eta=eta,
-                                                              coherence_threshold=ct, wf=wf, load_file=False,
+                                                              coherence_threshold=ct, wf=False, load_file=False,
                                                               outdir=output_dir, ensemble_avg=ensemble_avg, wsize=wsize,
                                                               verbose=verbose)
                 for sf in scale_factors:
                     snow_depth /= sf
                     snow_density = STANDING_SNOW_DENSITY[image_date]
                     swe, swe_stats = get_total_swe(snow_depth, density=snow_density, img_file=lia_file,
-                                                   outdir=output_dir)
+                                                   outdir=output_dir, wf=False)
                     ssd_actual = STANDING_SNOW_DEPTH[image_date]
                     sswe_actual = ssd_actual * snow_density * 10
                     img_date = pd.to_datetime(image_date, format='%m%d%Y')
@@ -754,11 +754,13 @@ def senstivity_analysis(image_dict, outdir, cwindows, eta_values, ct_values, sca
                                    'SSD_Actual(cm)': [ssd_actual], 'SSWE_Actual(mm)': [sswe_actual],
                                    'Mean_TVOL': [tvol_stats[0]], 'SD_TVOL': [tvol_stats[1]],
                                    'Mean_TSURF': [tsurf_stats[0]], 'SD_TSURF': [tsurf_stats[1]],
-                                   'Mean_KZ': [kz_stats[0] / sf], 'SD_KZ': [kz_stats[1] / sf]}
+                                   'Mean_KZ': [kz_stats[0] * sf], 'SD_KZ': [kz_stats[1] * sf]}
                     print(result_dict)
                     df = pd.DataFrame(data=result_dict)
                     with open('Sensitivity_Results.csv', 'a') as f:
                         df.to_csv(f, sep=';', index=False, mode='a', header=f.tell() == 0)
+    df = pd.read_csv('Sensitivity_Results.csv', sep=';')
+    df.to_csv('Sensitivity_Results.csv', sep=';', index=False)
 
 
 def makedirs(directory_list):
@@ -794,7 +796,7 @@ def run_polinsnow():
             windows = list(zip(w, w))
             eta_values = [0.6]
             ct_values = [0.]
-            scale_factors = range(1, 21)
+            scale_factors = range(1, 101)
             senstivity_analysis(image_dict, cwindows=windows, eta_values=eta_values, ct_values=ct_values, 
                                 scale_factors=scale_factors, image_date=image_date, outdir=output_path, lf_ifg=True, 
                                 lf_other=True, ensemble_avg=True)
