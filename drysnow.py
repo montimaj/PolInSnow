@@ -667,12 +667,12 @@ def compute_vertical_wavenumber(lia_file, image_date, outdir, scale_factor=1, is
     if not load_file:
         lia = get_image_array(lia_file)
         del_theta = np.abs(MEAN_INC_TDX[image_date] - MEAN_INC_TSX[image_date])
-        while del_theta < 0.01:
-            del_theta *= 10
         m = 4
         if is_single_pass:
             m = 2
         kz = scale_factor * m * np.pi * np.deg2rad(del_theta) / (WAVELENGTH * np.sin(np.deg2rad(lia)))
+        while np.nanmean(kz) < 0.01:
+            kz *= 10
         if wf:
             np.save(os.path.join(outdir, 'Wavenumber.npy'), kz)
         if verbose:
@@ -739,13 +739,13 @@ def senstivity_analysis(image_dict, outdir, cwindows, eta_values, ct_values, sca
         for eta in eta_values:
             for ct in ct_values:
                 snow_depth, sd_stats = calc_snow_depth_hybrid(tmat_vol, ground_phase, kz, img_file=lia_file, eta=eta,
-                                                              coherence_threshold=ct, wf=False, load_file=False,
+                                                              coherence_threshold=ct, wf=True, load_file=False,
                                                               outdir=output_dir, ensemble_avg=ensemble_avg, wsize=wsize,
                                                               verbose=verbose)
                 for sf in scale_factors:
-                    snow_depth /= sf
+                    snow_depth_scaled = snow_depth / sf
                     snow_density = STANDING_SNOW_DENSITY[image_date]
-                    swe, swe_stats = get_total_swe(snow_depth, density=snow_density, img_file=lia_file,
+                    swe, swe_stats = get_total_swe(snow_depth_scaled, density=snow_density, img_file=lia_file,
                                                    outdir=output_dir, wf=False)
                     ssd_actual = STANDING_SNOW_DEPTH[image_date]
                     sswe_actual = ssd_actual * snow_density * 10
@@ -756,7 +756,8 @@ def senstivity_analysis(image_dict, outdir, cwindows, eta_values, ct_values, sca
                                    'SSD_Actual(cm)': [ssd_actual], 'SSWE_Actual(mm)': [sswe_actual],
                                    'Mean_TVOL': [tvol_stats[0]], 'SD_TVOL': [tvol_stats[1]],
                                    'Mean_TSURF': [tsurf_stats[0]], 'SD_TSURF': [tsurf_stats[1]],
-                                   'Mean_KZ(rad/cm)': [kz_stats[0] * sf], 'SD_KZ(rad/cm)': [kz_stats[1] * sf]}
+                                   'Mean_KZ(rad/cm)': [kz_stats[0] * sf], 'SD_KZ(rad/cm)': [kz_stats[1] * sf],
+                                   'Pass': [ACQUISITION_ORIENTATION[image_date]]}
                     print(result_dict)
                     df = pd.DataFrame(data=result_dict)
                     with open('Sensitivity_Results.csv', 'a') as f:

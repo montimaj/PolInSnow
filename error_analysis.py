@@ -1,9 +1,9 @@
-from sklearn import metrics
 import pandas as pd
 import numpy as np
+from sklearn import metrics
 
 
-def error_metrics(actual, est):
+def calculate_metrics(actual, est):
     """
     Calculate error metrics
     :param actual: List or dataframe of actual values
@@ -13,26 +13,68 @@ def error_metrics(actual, est):
 
     mae = np.round(metrics.mean_absolute_error(actual, est), 2)
     r_squared = np.round(metrics.r2_score(actual, est), 2)
-    rmse = np.round(np.sqrt(metrics.mean_squared_error(actual, est)), 2)
+    rmse = np.round(metrics.mean_squared_error(actual, est, squared=False), 2)
     return r_squared, mae, rmse
 
 
-ssd_df = pd.read_csv('SSD_Results.csv', sep=' ')
-subset_ssd_df = ssd_df[['Date', 'Mean_SSD(cm)', 'Actual_SSD(cm)', 'Mean_SSWE(mm)', 'Actual_SSWE(mm)']].round(2)
-print(subset_ssd_df)
-actual_ssd = ssd_df['Actual_SSD(cm)']
-est_ssd = ssd_df['Mean_SSD(cm)']
-error_ssd = np.round(actual_ssd - est_ssd, 2)
+def get_error_df(stat_df, acquisition_type, window, sf):
+    """
+    Get error dataframe
+    :param stat_df: Statistics dataframe
+    :param acquisition_type: Acquisition type
+    :param window: Window size
+    :param sf: Scale factor
+    :return: Error dataframe
+    """
 
-actual_swe = ssd_df['Actual_SSWE(mm)']
-est_swe = ssd_df['Mean_SSWE(mm)']
-error_swe = np.round(actual_swe - est_swe, 2)
+    actual_sd = stat_df['SSD_Actual(cm)']
+    pred_sd = stat_df['Mean_SSD_Est(cm)']
+    r2_sd, mae_sd, rmse_sd = calculate_metrics(actual_sd, pred_sd)
+    actual_swe = stat_df['SSWE_Actual(mm)']
+    pred_swe = stat_df['Mean_SSWE_Est(mm)']
+    r2_swe, mae_swe, rmse_swe = calculate_metrics(actual_swe, pred_swe)
+    error_dict = {'Pass': [acquisition_type], 'CWindow': [window], 'SF': [sf], 'RMSE_SSD': [rmse_sd],
+                  'RMSE_SSWE': [rmse_swe], 'R2_SSD': [r2_sd], 'R2_SSWE': [r2_swe], 'MAE_SSD': [mae_sd],
+                  'MAE_SSWE': [mae_swe]}
+    return pd.DataFrame(data=error_dict)
 
-new_df = subset_ssd_df[['Date', 'Mean_SSD(cm)', 'Mean_SSWE(mm)']]
-new_df['Error_SSD(cm)'] = error_ssd
-new_df['Error_SSWE(mm)'] = error_swe
 
-print(new_df)
-print(error_metrics(actual_ssd, est_ssd))
-print(error_metrics(actual_swe, est_swe))
+def generate_error_metrics(input_csv, fixed_window=None):
+    """
+    Generate RMSE, R2, and MAE for SSD and SSWE
+    :param input_csv: Input csv
+    :param fixed_window: Specify a window size for which error metrics are to be calculated
+    :return: None
+    """
+
+    stat_df = pd.read_csv(input_csv, sep=';')
+    pass_list, window_list, sf_list = list(set(stat_df.Pass)), list(set(stat_df.CWindow)), list(set(stat_df.SF))
+    pass_list.sort()
+    window_list.sort()
+    sf_list.sort()
+    if fixed_window:
+        window_list = [fixed_window]
+    error_df = pd.DataFrame()
+    for acquisition_type in pass_list:
+        for window in window_list:
+            for sf in sf_list:
+                df = stat_df[(stat_df.Pass == acquisition_type) & (stat_df.CWindow == window) & (stat_df.SF == sf)]
+                error_df = error_df.append(get_error_df(df, acquisition_type, window, sf))
+    for window in window_list:
+        for sf in sf_list:
+            df = stat_df[(stat_df.CWindow == window) & (stat_df.SF == sf)]
+            error_df = error_df.append(get_error_df(df, acquisition_type='All', window=window, sf=sf))
+    error_df.to_csv('Error_Analysis.csv', index=False, sep=';')
+    print(error_df)
+    pass_list.append('All')
+    for acquisition_type in pass_list:
+        error_report_df = error_df[error_df.Pass == acquisition_type]
+        # print(error_report_df[error_report_df.R2_SSD == np.max(error_report_df.R2_SSD)])
+        # print(error_report_df[error_report_df.RMSE_SSD == np.min(error_report_df.RMSE_SSD)])
+        print(error_report_df[error_report_df.MAE_SSD == np.min(error_report_df.MAE_SSD)])
+    return error_df
+
+
+stat_csv = 'Sensitivity_Results.csv'
+error_stat_df = generate_error_metrics(stat_csv)
 
