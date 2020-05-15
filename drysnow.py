@@ -53,8 +53,8 @@ def read_images(image_path, common_path, imgformat='*.tif', verbose=False):
     if os_sep == -1:
         os_sep = image_path.rfind('/')
     image_date = image_path[os_sep + 1:]
-    layover_fe_files = os.path.join(common_path, ACQUISITION_ORIENTATION[image_date] + os.sep + imgformat)
-    file_list = glob(image_files) + glob(common_files) + glob(layover_fe_files)
+    layover_files = os.path.join(common_path, ACQUISITION_ORIENTATION[image_date] + os.sep + imgformat)
+    file_list = glob(image_files) + glob(common_files) + glob(layover_files)
     for file in file_list:
         if verbose:
             print(file)
