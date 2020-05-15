@@ -12,7 +12,7 @@ def calculate_metrics(actual, est):
     """
 
     mae = np.round(metrics.mean_absolute_error(actual, est), 2)
-    r_squared = np.round(metrics.r2_score(actual, est), 2)
+    r_squared = np.round(np.corrcoef(actual, est)[0, 1] ** 2, 2)
     rmse = np.round(metrics.mean_squared_error(actual, est, squared=False), 2)
     return r_squared, mae, rmse
 
@@ -39,15 +39,20 @@ def get_error_df(stat_df, acquisition_type, window, sf):
     return pd.DataFrame(data=error_dict)
 
 
-def generate_error_metrics(input_csv, fixed_window=None):
+def generate_error_metrics(input_csv, fixed_window=None, fix_date='12292015'):
     """
     Generate RMSE, R2, and MAE for SSD and SSWE
     :param input_csv: Input csv
     :param fixed_window: Specify a window size for which error metrics are to be calculated
+    :param fix_date: Fix scaling factor for this date
     :return: None
     """
 
     stat_df = pd.read_csv(input_csv, sep=';')
+    fix_date = pd.to_datetime(fix_date, format='%m%d%Y').date()
+    stat_df.loc[(stat_df.Date == str(fix_date)) & (stat_df.SF % 10 != 0), 'SF'] = np.nan
+    stat_df = stat_df.dropna(axis=0)
+    stat_df.loc[(stat_df.Date == str(fix_date)) & (stat_df.SF % 10 == 0), 'SF'] /= 10
     pass_list, window_list, sf_list = list(set(stat_df.Pass)), list(set(stat_df.CWindow)), list(set(stat_df.SF))
     pass_list.sort()
     window_list.sort()
@@ -65,12 +70,10 @@ def generate_error_metrics(input_csv, fixed_window=None):
             df = stat_df[(stat_df.CWindow == window) & (stat_df.SF == sf)]
             error_df = error_df.append(get_error_df(df, acquisition_type='All', window=window, sf=sf))
     error_df.to_csv('Error_Analysis.csv', index=False, sep=';')
-    print(error_df)
     pass_list.append('All')
     for acquisition_type in pass_list:
         error_report_df = error_df[error_df.Pass == acquisition_type]
-        # print(error_report_df[error_report_df.R2_SSD == np.max(error_report_df.R2_SSD)])
-        # print(error_report_df[error_report_df.RMSE_SSD == np.min(error_report_df.RMSE_SSD)])
+        print('Best Prediction based on MAE...')
         print(error_report_df[error_report_df.MAE_SSD == np.min(error_report_df.MAE_SSD)])
     return error_df
 

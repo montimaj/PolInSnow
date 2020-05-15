@@ -53,8 +53,8 @@ def read_images(image_path, common_path, imgformat='*.tif', verbose=False):
     if os_sep == -1:
         os_sep = image_path.rfind('/')
     image_date = image_path[os_sep + 1:]
-    layover_file = os.path.join(common_path, ACQUISITION_ORIENTATION[image_date] + os.sep + imgformat)
-    file_list = glob(image_files) + glob(common_files) + glob(layover_file)
+    layover_fe_files = os.path.join(common_path, ACQUISITION_ORIENTATION[image_date] + os.sep + imgformat)
+    file_list = glob(image_files) + glob(common_files) + glob(layover_fe_files)
     for file in file_list:
         if verbose:
             print(file)
@@ -671,8 +671,6 @@ def compute_vertical_wavenumber(lia_file, image_date, outdir, scale_factor=1, is
         if is_single_pass:
             m = 2
         kz = scale_factor * m * np.pi * np.deg2rad(del_theta) / (WAVELENGTH * np.sin(np.deg2rad(lia)))
-        while np.nanmean(kz) < 0.01:
-            kz *= 10
         if wf:
             np.save(os.path.join(outdir, 'Wavenumber.npy'), kz)
         if verbose:
@@ -785,6 +783,7 @@ def run_polinsnow():
     """
 
     image_dates = list(ACQUISITION_ORIENTATION.keys())
+    # completed = ['12292015', '01082016', '01092016', '01192016', '01202016']
     completed = []
     for image_date in image_dates:
         if image_date not in completed:
@@ -793,16 +792,17 @@ def run_polinsnow():
             image_path = os.path.join(base_path, image_date)
             common_path = os.path.join(base_path, 'Common')
             output_path = os.path.join('Outputs', image_date)
-            image_dict = read_images(image_path=image_path, common_path=common_path)
+            image_dict = read_images(image_path=image_path, common_path=common_path, verbose=True)
             print('Images loaded...\n')
-            w = range(5, 66, 10)
+            # w = range(5, 66, 10)
+            w = [5]
             windows = list(zip(w, w))
             eta_values = [0.6]
             ct_values = [0.]
             scale_factors = range(1, 101)
             senstivity_analysis(image_dict, cwindows=windows, eta_values=eta_values, ct_values=ct_values, 
-                                scale_factors=scale_factors, image_date=image_date, outdir=output_path, lf_ifg=True, 
-                                lf_other=True, ensemble_avg=True)
+                                scale_factors=scale_factors, image_date=image_date, outdir=output_path, lf_ifg=False,
+                                lf_other=False, ensemble_avg=True)
 
 
 warnings.filterwarnings("ignore")
