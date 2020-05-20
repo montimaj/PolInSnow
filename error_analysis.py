@@ -21,7 +21,7 @@ def get_error_df(stat_df, acquisition_type, window, sf):
     """
     Get error dataframe
     :param stat_df: Statistics dataframe
-    :param acquisition_type: Acquisition type
+    :param acquisition_type: Image acquisition type
     :param window: Window size
     :param sf: Scale factor
     :return: Error dataframe
@@ -37,6 +37,17 @@ def get_error_df(stat_df, acquisition_type, window, sf):
                   'RMSE_SSWE': [rmse_swe], 'R2_SSD': [r2_sd], 'R2_SSWE': [r2_swe], 'MAE_SSD': [mae_sd],
                   'MAE_SSWE': [mae_swe]}
     return pd.DataFrame(data=error_dict)
+
+
+def get_best_scale(stat_df):
+    """
+    Get best SF for a fixed window
+    :param stat_df: Statistics dataframe
+    :return: Best SF
+    """
+
+    stat_df["SSD_Error"] = np.abs(stat_df['SSD_Actual(cm)'] - stat_df['Mean_SSD_Est(cm)'])
+    return np.float(stat_df[stat_df.SSD_Error == np.min(stat_df.SSD_Error)].SF)
 
 
 def generate_error_metrics(input_csv, fixed_window=None, fix_date='12292015'):
@@ -71,10 +82,32 @@ def generate_error_metrics(input_csv, fixed_window=None, fix_date='12292015'):
             error_df = error_df.append(get_error_df(df, acquisition_type='All', window=window, sf=sf))
     error_df.to_csv('Error_Analysis.csv', index=False, sep=';')
     pass_list.append('All')
+    best_stat_df = pd.DataFrame()
+    print('Best Prediction based on MAE...')
     for acquisition_type in pass_list:
         error_report_df = error_df[error_df.Pass == acquisition_type]
-        print('Best Prediction based on MAE...')
-        print(error_report_df[error_report_df.MAE_SSD == np.min(error_report_df.MAE_SSD)])
+        best_stat_df = best_stat_df.append(error_report_df[error_report_df.MAE_SSD == np.min(error_report_df.MAE_SSD)])
+    print(best_stat_df)
+    actual_ssd = []
+    actual_sswe = []
+    pred_ssd = []
+    pred_sswe = []
+    for acquisition_type, window, sf in zip(best_stat_df['Pass'], best_stat_df['CWindow'], best_stat_df['SF']):
+        best_stat = stat_df[(stat_df.Pass == acquisition_type) & (stat_df.CWindow == window) & (stat_df.SF == sf)]
+        actual_ssd.append(list(best_stat['SSD_Actual(cm)']))
+        pred_ssd.append(list(best_stat['Mean_SSD_Est(cm)']))
+        actual_sswe.append(list(best_stat['SSWE_Actual(mm)']))
+        pred_sswe.append(list(best_stat['Mean_SSWE_Est(mm)']))
+    actual_ssd = [item for sublist in actual_ssd for item in sublist]
+    pred_ssd = [item for sublist in pred_ssd for item in sublist]
+    actual_sswe = [item for sublist in actual_sswe for item in sublist]
+    pred_sswe = [item for sublist in pred_sswe for item in sublist]
+    print('Actual SSD:', actual_ssd)
+    print('Pred_SSD:', pred_ssd)
+    print('Actual_SSWE:', actual_sswe)
+    print('Pred_SSWE:', pred_sswe)
+    print('SSD Metrics:', '(R2,', 'MAE,', 'RMSE)', calculate_metrics(actual_ssd, pred_ssd))
+    print('SSWE Metrics:', '(R2,', 'MAE,', 'RMSE)', calculate_metrics(actual_sswe, pred_sswe))
     return error_df
 
 

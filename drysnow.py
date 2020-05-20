@@ -794,8 +794,7 @@ def run_polinsnow():
             output_path = os.path.join('Outputs', image_date)
             image_dict = read_images(image_path=image_path, common_path=common_path, verbose=True)
             print('Images loaded...\n')
-            # w = range(5, 66, 10)
-            w = [5]
+            w = range(5, 66, 10)
             windows = list(zip(w, w))
             eta_values = [0.6]
             ct_values = [0.]
