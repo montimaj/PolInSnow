@@ -7,6 +7,7 @@ import xmltodict
 import pandas as pd
 import warnings
 from glob import glob
+from joblib import Parallel, delayed
 
 MEAN_INC_TDX = {'12292015': (33.04875564575195 + 34.621795654296875) / 2.,
                 '01082016': (38.07691192626953 + 39.37236785888672) / 2.,
@@ -732,12 +733,12 @@ def senstivity_analysis(image_dict, outdir, cwindows, eta_values, ct_values, sca
                                                load_file=lf_other, outdir=output_dir)
         ground_phase = get_ground_phase(tmat_vol, tmat_surf, wsize_gp_kz, img_dict=image_dict, apply_masks=apply_masks,
                                         verbose=verbose, wf=wf, load_file=lf_other, outdir=output_dir)
-        kz, kz_stats = compute_vertical_wavenumber(lia_file, image_date=image_date, verbose=verbose, load_file=False,
+        kz, kz_stats = compute_vertical_wavenumber(lia_file, image_date=image_date, verbose=verbose, load_file=lf_other,
                                                    outdir=output_dir, wf=True, ensemble_avg=ensemble_avg, wsize=wsize)
         for eta in eta_values:
             for ct in ct_values:
                 snow_depth, sd_stats = calc_snow_depth_hybrid(tmat_vol, ground_phase, kz, img_file=lia_file, eta=eta,
-                                                              coherence_threshold=ct, wf=True, load_file=False,
+                                                              coherence_threshold=ct, wf=True, load_file=lf_other,
                                                               outdir=output_dir, ensemble_avg=ensemble_avg, wsize=wsize,
                                                               verbose=verbose)
                 for sf in scale_factors:
@@ -758,10 +759,7 @@ def senstivity_analysis(image_dict, outdir, cwindows, eta_values, ct_values, sca
                                    'Pass': [ACQUISITION_ORIENTATION[image_date]]}
                     print(result_dict)
                     df = pd.DataFrame(data=result_dict)
-                    with open('Sensitivity_Results.csv', 'a') as f:
-                        df.to_csv(f, sep=';', index=False, mode='a', header=f.tell() == 0)
-    df = pd.read_csv('Sensitivity_Results.csv', sep=';')
-    df.to_csv('Sensitivity_Results.csv', sep=';', index=False)
+                    df.to_csv('Sensitivity_Results.csv', sep=';', index=False, mode='a')
 
 
 def makedirs(directory_list):
@@ -779,30 +777,45 @@ def makedirs(directory_list):
 def run_polinsnow():
     """
     Initializes all hyperparameters and performs sensitivity analyses
-    :return: Nonw
+    :return: None
     """
 
     image_dates = list(ACQUISITION_ORIENTATION.keys())
     # completed = ['12292015', '01082016', '01092016', '01192016', '01202016']
     completed = []
-    for image_date in image_dates:
-        if image_date not in completed:
-            print('Working with', image_date, 'data...\n')
-            base_path = 'Project_Data'
-            image_path = os.path.join(base_path, image_date)
-            common_path = os.path.join(base_path, 'Common')
-            output_path = os.path.join('Outputs', image_date)
-            image_dict = read_images(image_path=image_path, common_path=common_path, verbose=True)
-            print('Images loaded...\n')
-            w = range(5, 66, 10)
-            windows = list(zip(w, w))
-            eta_values = [0.6]
-            ct_values = [0.]
-            scale_factors = range(1, 101)
-            senstivity_analysis(image_dict, cwindows=windows, eta_values=eta_values, ct_values=ct_values, 
-                                scale_factors=scale_factors, image_date=image_date, outdir=output_path, lf_ifg=False,
-                                lf_other=False, ensemble_avg=True)
+    Parallel(n_jobs=len(image_dates))(delayed(parallel_compute)(image_date=image_date, completed=completed)
+                                      for image_date in image_dates)
+    df = pd.read_csv('Sensitivity_Results.csv', sep=';')
+    df.sort_values('Date')
+    df = df.drop_duplicates(keep=False)
+    df = df.dropna()
+    df.to_csv('Sensitivity_Results_T6.csv', sep=';', index=False)
 
 
-warnings.filterwarnings("ignore")
+def parallel_compute(image_date, completed):
+    """
+    Use parallel computation, must be called from inside #run_polinsnow()
+    :param image_date: Image acquisition data
+    :param completed: List of completed image dates
+    :return: None
+    """
+
+    warnings.filterwarnings("ignore")
+    if image_date not in completed:
+        print('Working with', image_date, 'data...\n')
+        base_path = 'Project_Data'
+        image_path = os.path.join(base_path, image_date)
+        common_path = os.path.join(base_path, 'Common')
+        output_path = os.path.join('Outputs', image_date)
+        image_dict = read_images(image_path=image_path, common_path=common_path, verbose=False)
+        w = range(5, 66, 10)
+        windows = list(zip(w, w))
+        eta_values = [0.6]
+        ct_values = [0.]
+        scale_factors = range(1, 101)
+        senstivity_analysis(image_dict, cwindows=windows, eta_values=eta_values, ct_values=ct_values,
+                            scale_factors=scale_factors, image_date=image_date, outdir=output_path, lf_ifg=False,
+                            lf_other=False, ensemble_avg=True, verbose=False)
+
+
 run_polinsnow()
