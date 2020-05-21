@@ -807,7 +807,8 @@ def run_polinsnow(lf_ifg=True, lf_coh=True, lf_gp=True, lf_kz=False, lf_sd=False
     df.sort_values('Date')
     df = df.drop_duplicates(keep=False)
     df = df.dropna()
-    df.to_csv(result_dir + 'Sensitivity_Results_Latest.csv', sep=';', index=False)
+    updated_file = os.path.join(result_dir, 'Sensitivity_Results_T2.csv')
+    df.to_csv(updated_file, sep=';', index=False)
 
 
 def parallel_compute(image_date, completed, lf_dict, result_file):
@@ -823,13 +824,12 @@ def parallel_compute(image_date, completed, lf_dict, result_file):
     warnings.filterwarnings("ignore")
     if image_date not in completed:
         print('Working with', image_date, 'data...\n')
-        base_path = 'Project_Data'
+        base_path = 'PolinSnow_Data'
         image_path = os.path.join(base_path, image_date)
         common_path = os.path.join(base_path, 'Common')
-        output_path = os.path.join('Outputs_New', image_date)
+        output_path = os.path.join('Outputs_New_T2', image_date)
         image_dict = read_images(image_path=image_path, common_path=common_path, verbose=False)
         w = range(5, 66, 10)
-        w = [5]
         windows = list(zip(w, w))
         eta_values = [0.6]
         ct_values = [0.]
@@ -839,4 +839,4 @@ def parallel_compute(image_date, completed, lf_dict, result_file):
                             ensemble_avg=True, verbose=False, result_file=result_file)
 
 
-run_polinsnow()
+run_polinsnow(lf_ifg=False, lf_coh=False, lf_gp=False, lf_kz=False, lf_sd=False)
