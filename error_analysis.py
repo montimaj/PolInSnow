@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import os
 from sklearn import metrics
 
 
@@ -50,10 +51,11 @@ def get_best_scale(stat_df):
     return np.float(stat_df[stat_df.SSD_Error == np.min(stat_df.SSD_Error)].SF)
 
 
-def generate_error_metrics(input_csv, fixed_window=None, fix_date='12292015'):
+def generate_error_metrics(input_csv, result_file, fixed_window=None, fix_date='12292015'):
     """
     Generate RMSE, R2, and MAE for SSD and SSWE
     :param input_csv: Input csv
+    :param result_file: Output file to store error statistics
     :param fixed_window: Specify a window size for which error metrics are to be calculated
     :param fix_date: Fix scaling factor for this date
     :return: None
@@ -80,7 +82,7 @@ def generate_error_metrics(input_csv, fixed_window=None, fix_date='12292015'):
         for sf in sf_list:
             df = stat_df[(stat_df.CWindow == window) & (stat_df.SF == sf)]
             error_df = error_df.append(get_error_df(df, acquisition_type='All', window=window, sf=sf))
-    error_df.to_csv('Error_Analysis.csv', index=False, sep=';')
+    error_df.to_csv(result_file, index=False, sep=';')
     pass_list.append('All')
     best_stat_df = pd.DataFrame()
     print('Best Prediction based on MAE...')
@@ -111,6 +113,8 @@ def generate_error_metrics(input_csv, fixed_window=None, fix_date='12292015'):
     return error_df
 
 
-stat_csv = 'Sensitivity_Results_T5.csv'
-error_stat_df = generate_error_metrics(stat_csv, fixed_window='(5, 5)')
+input_dir = 'Analysis_Results'
+stat_csv = os.path.join(input_dir, 'Sensitivity_Results_T7.csv')
+result_csv = os.path.join(input_dir, 'Error_Analysis.csv')
+error_stat_df = generate_error_metrics(stat_csv, result_file=result_csv, fixed_window='(5, 5)')
 
