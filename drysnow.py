@@ -69,6 +69,17 @@ def read_images(image_path, common_path, imgformat='*.tif', verbose=False):
     return images
 
 
+def get_effective_permittivity(snow_density):
+    """
+    Get effective pemittivity of standing snow / ice
+    :param snow_density: Snow density in gm/cm^3
+    :return: Real part of Effective permittivity
+    """
+
+    eff = 1 + 1.5995 * snow_density + 1.861 * (snow_density ** 3)
+    return eff
+
+
 def get_complex_image(img_file, is_dual=False):
     """
     Read complex image stored either in four bands or two separate bands and set nan values accordingly
@@ -86,15 +97,16 @@ def get_complex_image(img_file, is_dual=False):
     return mst
 
 
-def get_image_array(img_file):
+def get_image_array(img_file, no_data_value=NO_DATA_VALUE):
     """
     Read real numpy arrays from file
     :param img_file: GDAL reference file
+    :param no_data_value: No Data Value
     :return: Numpy array with nan set accordingly
     """
 
     arr = img_file.GetRasterBand(1).ReadAsArray()
-    arr[arr == NO_DATA_VALUE] = np.nan
+    arr[arr == no_data_value] = np.nan
     return arr
 
 
@@ -649,13 +661,14 @@ def get_coherence(s1, s2, ifg, wsize, img_dict, apply_masks, verbose, wf, outdir
     return tmat, cr
 
 
-def compute_vertical_wavenumber(lia_file, image_date, outdir, scale_factor=1, is_single_pass=True, wf=False,
-                                verbose=True, load_file=False, ensemble_avg=True, **kwargs):
+def compute_vertical_wavenumber(lia_file, image_date, outdir, snow_density, scale_factor=1, is_single_pass=True,
+                                wf=False, verbose=True, load_file=False, ensemble_avg=True, **kwargs):
     """
     Calculate vertical wavenumber, 'wsize' must be passed via kwargs to calculate validation statistics
     :param lia_file: Local incidence angle GDAL reference
     :param image_date: Image acquisition date
     :param outdir: Output directory
+    :param snow_density: Snow density in gm/cm^3
     :param scale_factor: Vertical wavenumber scale factor (real valued, shoud be chosen according to the study area)
     :param is_single_pass: Set true for single-pass acquisitions
     :param wf: Set True to write intermediate files
@@ -673,7 +686,8 @@ def compute_vertical_wavenumber(lia_file, image_date, outdir, scale_factor=1, is
         m = 4
         if is_single_pass:
             m = 2
-        kz = scale_factor * m * np.pi * np.deg2rad(del_theta) / (WAVELENGTH * np.sin(np.deg2rad(lia)))
+        eff_sqrt = np.sqrt(get_effective_permittivity(snow_density))
+        kz = scale_factor * eff_sqrt * m * np.pi * np.deg2rad(del_theta) / (WAVELENGTH * np.sin(np.deg2rad(lia)))
         if wf:
             np.save(os.path.join(outdir, 'Wavenumber.npy'), kz)
         if verbose:
@@ -738,8 +752,9 @@ def senstivity_analysis(image_dict, outdir, result_file, cwindows, eta_values, c
         ground_phase = get_ground_phase(tmat_vol, tmat_surf, wsize=wsize_half, img_dict=image_dict,
                                         apply_masks=apply_masks, verbose=verbose, wf=wf, load_file=lf_dict['GP'],
                                         outdir=output_dir)
-        kz, kz_stats = compute_vertical_wavenumber(lia_file, image_date=image_date, verbose=verbose,
-                                                   load_file=lf_dict['KZ'], outdir=output_dir, wf=True,
+        snow_density = STANDING_SNOW_DENSITY[image_date]
+        kz, kz_stats = compute_vertical_wavenumber(lia_file, snow_density=snow_density, image_date=image_date,
+                                                   verbose=verbose, load_file=lf_dict['KZ'], outdir=output_dir, wf=True,
                                                    ensemble_avg=ensemble_avg, wsize=wsize_half)
         for eta in eta_values:
             for ct in ct_values:
@@ -749,7 +764,6 @@ def senstivity_analysis(image_dict, outdir, result_file, cwindows, eta_values, c
                                                               wsize=wsize_half, verbose=verbose)
                 for sf in scale_factors:
                     snow_depth_scaled = snow_depth / sf
-                    snow_density = STANDING_SNOW_DENSITY[image_date]
                     swe, swe_stats = get_total_swe(snow_depth_scaled, density=snow_density, img_file=lia_file,
                                                    outdir=output_dir, wf=False, wsize=wsize_half)
                     ssd_actual = STANDING_SNOW_DEPTH[image_date]
@@ -766,6 +780,27 @@ def senstivity_analysis(image_dict, outdir, result_file, cwindows, eta_values, c
                     print(result_dict)
                     df = pd.DataFrame(data=result_dict)
                     df.to_csv(result_file, sep=';', index=False, mode='a')
+
+
+def coherence_analysis():
+    """
+    Compare surface coherence between summer and winter periods
+    :return: None
+    """
+
+    coh1 = gdal.Open('PolinSnow_Data/Coherence/Coh_01082016.tif')
+    coh2 = gdal.Open('PolinSnow_Data/Coherence/Coh_06082017.tif')
+    layover_file = gdal.Open(r'PolinSnow_Data\Common\DESC\LAYOVER.tif')
+    forest_file = gdal.Open(r'PolinSnow_Data\Common\FOREST.tif')
+
+    coh1_arr = get_image_array(coh1, no_data_value=-32767)
+    coh2_arr = get_image_array(coh2, no_data_value=-32767)
+    coh1_arr = set_nan_img(coh1_arr, layover_file=layover_file, forest_file=forest_file)
+    coh2_arr = set_nan_img(coh2_arr, layover_file=layover_file, forest_file=forest_file)
+    print(check_values(coh1_arr, coh1))
+    print(check_values(coh2_arr, coh2))
+    print(np.nanmean(coh1_arr))
+    print(np.nanmean(coh2_arr))
 
 
 def makedirs(directory_list):
@@ -792,12 +827,13 @@ def run_polinsnow(lf_ifg=True, lf_coh=True, lf_gp=True, lf_kz=False, lf_sd=False
     """
 
     image_dates = list(ACQUISITION_ORIENTATION.keys())
-    # completed = ['12292015', '01082016', '01092016', '01192016', '01202016']
     completed = []
     lf_dict = {'IFG': lf_ifg, 'COH': lf_coh, 'GP': lf_gp, 'KZ': lf_kz, 'SD': lf_sd}
     result_dir = 'Analysis_Results'
     makedirs([result_dir])
-    result_file = os.path.join(result_dir, 'Sensitivity_Results.csv')
+    result_file = os.path.join(result_dir, 'Sensitivity_Results_New.csv')
+    if os.path.exists(result_file):
+        os.remove(result_file)
     n_jobs = min(len(image_dates), multiprocessing.cpu_count())
     if lf_ifg and lf_coh and lf_gp and lf_kz and lf_sd:
         n_jobs = 1
@@ -807,7 +843,7 @@ def run_polinsnow(lf_ifg=True, lf_coh=True, lf_gp=True, lf_kz=False, lf_sd=False
     df.sort_values('Date')
     df = df.drop_duplicates(keep=False)
     df = df.dropna()
-    updated_file = os.path.join(result_dir, 'Sensitivity_Results_T2.csv')
+    updated_file = os.path.join(result_dir, 'Sensitivity_Results_T2_New.csv')
     df.to_csv(updated_file, sep=';', index=False)
 
 
@@ -829,14 +865,14 @@ def parallel_compute(image_date, completed, lf_dict, result_file):
         common_path = os.path.join(base_path, 'Common')
         output_path = os.path.join('Outputs_New_T2', image_date)
         image_dict = read_images(image_path=image_path, common_path=common_path, verbose=False)
-        w = range(5, 66, 10)
+        w = list(range(5, 56, 10)) + [9, 11]
         windows = list(zip(w, w))
-        eta_values = [0.6]
+        eta_values = np.arange(0, 1.1, 0.1)
         ct_values = [0.]
         scale_factors = range(1, 101)
         senstivity_analysis(image_dict, cwindows=windows, eta_values=eta_values, ct_values=ct_values,
                             scale_factors=scale_factors, image_date=image_date, outdir=output_path, lf_dict=lf_dict,
-                            ensemble_avg=True, verbose=False, result_file=result_file)
+                            ensemble_avg=True, verbose=False, result_file=result_file, wf=False)
 
 
-run_polinsnow(lf_ifg=False, lf_coh=False, lf_gp=False, lf_kz=False, lf_sd=False)
+run_polinsnow(lf_ifg=True, lf_coh=True, lf_gp=True, lf_kz=True, lf_sd=False)

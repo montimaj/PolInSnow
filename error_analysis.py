@@ -13,7 +13,7 @@ def calculate_metrics(actual, est):
     """
 
     mae = np.round(metrics.mean_absolute_error(actual, est), 2)
-    r_squared = np.round(np.corrcoef(actual, est)[0, 1] ** 2, 2)
+    r_squared = np.round(metrics.r2_score(actual, est), 2)
     rmse = np.round(metrics.mean_squared_error(actual, est, squared=False), 2)
     return r_squared, mae, rmse
 
@@ -48,8 +48,11 @@ def get_best_scale(stat_df):
     """
 
     stat_df = stat_df.__deepcopy__()
-    stat_df["SSD_Error"] = np.abs(stat_df['SSD_Actual(cm)'] - stat_df['Mean_SSD_Est(cm)'])
-    return np.float(stat_df[stat_df.SSD_Error == np.min(stat_df.SSD_Error)].SF)
+    stat_df['SSD_Error'] = np.abs(stat_df['SSD_Actual(cm)'] - stat_df['Mean_SSD_Est(cm)'])
+    t = stat_df[stat_df.SSD_Error == np.min(stat_df.SSD_Error)]
+    t.to_csv('Analysis_Results/Foo.csv', index=False, sep=';', mode='a')
+    return np.float(stat_df[stat_df.SSD_Error == np.min(stat_df.SSD_Error)].SF), \
+           np.float(stat_df[stat_df.SSD_Error == np.min(stat_df.SSD_Error)].Eta)
 
 
 def generate_error_metrics(input_csv, result_file, fixed_window=None, fix_date='12292015'):
@@ -113,16 +116,20 @@ def generate_error_metrics(input_csv, result_file, fixed_window=None, fix_date='
     return error_df
 
 
-def generate_error_metrics2(input_csv, result_file, fixed_window=None):
+def generate_error_metrics2(input_csv, result_file, fixed_window=None, fix_date='12292015'):
     """
     Generate RMSE, R2, and MAE for SSD and SSWE based on each image
     :param input_csv: Input csv
     :param result_file: Output file to store error statistics
     :param fixed_window: Specify a window size for which error metrics are to be calculated
+    :param fix_date: Fix scaling factor for this date
     :return: Error dataframe
     """
 
     stat_df = pd.read_csv(input_csv, sep=';')
+    fix_date = pd.to_datetime(fix_date, format='%m%d%Y').date()
+    stat_df.loc[stat_df.Date == str(fix_date), 'Mean_SSD_Est(cm)'] /= 10
+    stat_df.loc[stat_df.Date == str(fix_date), 'Mean_SSWE_Est(mm)'] /= 10
     date_list, window_list = list(set(stat_df.Date)), list(set(stat_df.CWindow))
     date_list.sort()
     window_list.sort()
@@ -132,8 +139,9 @@ def generate_error_metrics2(input_csv, result_file, fixed_window=None):
     for image_date in date_list:
         for window in window_list:
             df = stat_df[(stat_df.Date == image_date) & (stat_df.CWindow == window)]
-            best_sf = get_best_scale(df)
-            error_df = error_df.append(df[df.SF == best_sf])
+            if not df.empty:
+                best_sf, eta = get_best_scale(df)
+                error_df = error_df.append(df[(df.SF == best_sf) & (df.Eta == eta)])
     error_df.to_csv(result_file, index=False, sep=';')
     r2_ssd, mae_ssd, rmse_ssd = calculate_metrics(error_df['SSD_Actual(cm)'], error_df["Mean_SSD_Est(cm)"])
     r2_sswe, mae_sswe, rmse_sswe = calculate_metrics(error_df['SSWE_Actual(mm)'], error_df["Mean_SSWE_Est(mm)"])
@@ -143,6 +151,6 @@ def generate_error_metrics2(input_csv, result_file, fixed_window=None):
 
 
 input_dir = 'Analysis_Results'
-stat_csv = os.path.join(input_dir, 'Sensitivity_Results_Latest_T1.csv')
+stat_csv = os.path.join(input_dir, 'Sensitivity_Results_T2.csv')
 result_csv = os.path.join(input_dir, 'Error_Analysis.csv')
 error_stat_df = generate_error_metrics2(stat_csv, result_file=result_csv, fixed_window='(5, 5)')
