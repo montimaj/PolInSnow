@@ -11,5 +11,5 @@ Thesis: https://library.itc.utwente.nl/papers_2019/msc/gfm/majumdar.pdf
 
 Standing snow depth map and histogram for Jan 8, 2016
 
-![Alt text](./Maps/ssd_map.png?raw=true "Standing Snow Depth")
-![Alt text](./Maps/Histogram.png?raw=true "Histogram")
+![Alt text](./Maps/SSD_Map.png?raw=true "Standing Snow Depth")
+
