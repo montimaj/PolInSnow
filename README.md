@@ -7,6 +7,8 @@ Pre-processed Data: https://osf.io/mr74n/
 
 Preprint: https://doi.org/10.31223/osf.io/6v4h3
 
+Preprint LaTeX source: https://github.com/montimaj/ITC_Paper
+
 Thesis: https://library.itc.utwente.nl/papers_2019/msc/gfm/majumdar.pdf
 
 Standing snow depth map and histogram for Jan 8, 2016
