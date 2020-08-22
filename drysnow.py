@@ -729,10 +729,10 @@ def senstivity_analysis(image_dict, outdir, result_file, cwindows, eta_values, c
     makedirs([ifg_dir])
     s1_vol, s2_vol, ifg_vol = calc_interferogram(image_dict, pol_vec['HV'], apply_masks=apply_masks,
                                                  outfile='Vol', verbose=verbose, load_files=lf_dict['IFG'],
-                                                 outdir=ifg_dir)
+                                                 outdir=ifg_dir, wf=wf)
     s1_surf, s2_surf, ifg_surf = calc_interferogram(image_dict, pol_vec['HH-VV'], apply_masks=apply_masks,
                                                     outfile='Surf', verbose=verbose, load_files=lf_dict['IFG'],
-                                                    outdir=ifg_dir)
+                                                    outdir=ifg_dir, wf=wf)
     lia_file = image_dict['LIA']
     for wsize in cwindows:
         w1 = wsize[0]
@@ -754,18 +754,18 @@ def senstivity_analysis(image_dict, outdir, result_file, cwindows, eta_values, c
                                         outdir=output_dir)
         snow_density = STANDING_SNOW_DENSITY[image_date]
         kz, kz_stats = compute_vertical_wavenumber(lia_file, snow_density=snow_density, image_date=image_date,
-                                                   verbose=verbose, load_file=lf_dict['KZ'], outdir=output_dir, wf=True,
+                                                   verbose=verbose, load_file=lf_dict['KZ'], outdir=output_dir, wf=wf,
                                                    ensemble_avg=ensemble_avg, wsize=wsize_half)
         for eta in eta_values:
             for ct in ct_values:
                 snow_depth, sd_stats = calc_snow_depth_hybrid(tmat_vol, ground_phase, kz, img_file=lia_file, eta=eta,
-                                                              coherence_threshold=ct, wf=True, load_file=lf_dict['SD'],
+                                                              coherence_threshold=ct, wf=wf, load_file=lf_dict['SD'],
                                                               outdir=output_dir, ensemble_avg=ensemble_avg,
                                                               wsize=wsize_half, verbose=verbose)
                 for sf in scale_factors:
                     snow_depth_scaled = snow_depth / sf
                     swe, swe_stats = get_total_swe(snow_depth_scaled, density=snow_density, img_file=lia_file,
-                                                   outdir=output_dir, wf=False, wsize=wsize_half)
+                                                   outdir=output_dir, wf=wf, wsize=wsize_half)
                     ssd_actual = STANDING_SNOW_DEPTH[image_date]
                     sswe_actual = ssd_actual * snow_density * 10
                     img_date = pd.to_datetime(image_date, format='%m%d%Y')
@@ -815,7 +815,7 @@ def makedirs(directory_list):
             os.makedirs(directory_name)
 
 
-def run_polinsnow(lf_ifg=True, lf_coh=True, lf_gp=True, lf_kz=False, lf_sd=False):
+def run_polinsnow(lf_ifg=True, lf_coh=True, lf_gp=True, lf_kz=False, lf_sd=False, wf=True):
     """
     Initializes all hyperparameters and performs sensitivity analyses
     :param lf_ifg: Set True to Load existing files related to the PolInSAR interferogram
@@ -823,6 +823,7 @@ def run_polinsnow(lf_ifg=True, lf_coh=True, lf_gp=True, lf_kz=False, lf_sd=False
     :param lf_gp: Set True to Load existing files related to the PolInSAR ground phase
     :param lf_kz: Set True to Load existing files related to the PolInSAR vertical wavenumber
     :param lf_sd: Set True to Load existing files related to the PolInSAR snow depth
+    :param wf: Set False to disable file writing
     :return: None
     """
 
@@ -831,29 +832,30 @@ def run_polinsnow(lf_ifg=True, lf_coh=True, lf_gp=True, lf_kz=False, lf_sd=False
     lf_dict = {'IFG': lf_ifg, 'COH': lf_coh, 'GP': lf_gp, 'KZ': lf_kz, 'SD': lf_sd}
     result_dir = 'Analysis_Results'
     makedirs([result_dir])
-    result_file = os.path.join(result_dir, 'Sensitivity_Results_New.csv')
+    result_file = os.path.join(result_dir, 'Sensitivity_Results_GIS_New.csv')
     if os.path.exists(result_file):
         os.remove(result_file)
     n_jobs = min(len(image_dates), multiprocessing.cpu_count())
     if lf_ifg and lf_coh and lf_gp and lf_kz and lf_sd:
         n_jobs = 1
     Parallel(n_jobs=n_jobs)(delayed(parallel_compute)(image_date=image_date, completed=completed, lf_dict=lf_dict,
-                                                      result_file=result_file) for image_date in image_dates)
+                                                      result_file=result_file, wf=wf) for image_date in image_dates)
     df = pd.read_csv(result_file, sep=';')
     df.sort_values('Date')
     df = df.drop_duplicates(keep=False)
     df = df.dropna()
-    updated_file = os.path.join(result_dir, 'Sensitivity_Results_T2_New.csv')
+    updated_file = os.path.join(result_dir, 'Sensitivity_Results_GIS_T1_New.csv')
     df.to_csv(updated_file, sep=';', index=False)
 
 
-def parallel_compute(image_date, completed, lf_dict, result_file):
+def parallel_compute(image_date, completed, lf_dict, result_file, wf):
     """
     Use parallel computation, must be called from inside #run_polinsnow()
     :param image_date: Image acquisition data
     :param completed: List of completed image dates
     :param lf_dict: Dictionary containing boolean values for loading existing files
-    :param result_file:
+    :param result_file: Output result file
+    :param wf: Set False to disable file writing
     :return: None
     """
 
@@ -865,14 +867,14 @@ def parallel_compute(image_date, completed, lf_dict, result_file):
         common_path = os.path.join(base_path, 'Common')
         output_path = os.path.join('Outputs_New_T2', image_date)
         image_dict = read_images(image_path=image_path, common_path=common_path, verbose=False)
-        w = list(range(5, 56, 10)) + [9, 11]
+        w = list(range(5, 56, 10)) + [21]
         windows = list(zip(w, w))
-        eta_values = np.arange(0, 1.1, 0.1)
+        eta_values = [0.6]
         ct_values = [0.]
         scale_factors = range(1, 101)
         senstivity_analysis(image_dict, cwindows=windows, eta_values=eta_values, ct_values=ct_values,
                             scale_factors=scale_factors, image_date=image_date, outdir=output_path, lf_dict=lf_dict,
-                            ensemble_avg=True, verbose=False, result_file=result_file, wf=False)
+                            ensemble_avg=True, verbose=False, result_file=result_file, wf=wf)
 
 
-run_polinsnow(lf_ifg=True, lf_coh=True, lf_gp=True, lf_kz=True, lf_sd=False)
+run_polinsnow(lf_ifg=True, lf_coh=False, lf_gp=False, lf_kz=False, lf_sd=False, wf=True)
